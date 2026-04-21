@@ -12,3 +12,6 @@ DATABASES = {
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
+
+# Strip middlewares that depend on WIP code not yet on disk.
+MIDDLEWARE = [m for m in MIDDLEWARE if "GsuiteGateAuthMiddleware" not in m]

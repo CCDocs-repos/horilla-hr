@@ -215,35 +215,6 @@ class ForcePasswordChangeMiddleware:
         return self.get_response(request)
 
 
-class GsuiteGateAuthMiddleware:
-    """
-    CCDocs middleware: trust X-Auth-Request-Email forwarded by Caddy's
-    forward_auth (GSuite Gate SSO) and auto-login the matching Horilla user.
-
-    If the header is absent or no matching user exists, the request proceeds
-    unauthenticated so normal Django auth takes over.
-    """
-
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        if not request.user.is_authenticated:
-            email = request.META.get("HTTP_X_AUTH_REQUEST_EMAIL")
-            if email:
-                from django.contrib.auth import login
-                from django.contrib.auth.models import User
-
-                try:
-                    user = User.objects.get(email=email)
-                    user.backend = "django.contrib.auth.backends.ModelBackend"
-                    login(request, user)
-                except (User.DoesNotExist, User.MultipleObjectsReturned):
-                    pass
-
-        return self.get_response(request)
-
-
 class TwoFactorAuthMiddleware:
     """
     Middleware to enforce two-factor authentication for specific users.
