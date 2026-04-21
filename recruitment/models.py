@@ -470,6 +470,24 @@ class Candidate(HorillaModel):
         ],
     )
     sequence = models.IntegerField(null=True, default=0)
+    ai_score = models.FloatField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name=_("AI Score"),
+    )
+    ai_report = models.JSONField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name=_("AI Report"),
+    )
+    ai_screened_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name=_("AI Screened At"),
+    )
 
     probation_end = models.DateField(null=True, editable=False)
     offer_letter_status = models.CharField(
