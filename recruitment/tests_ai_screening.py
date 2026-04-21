@@ -165,3 +165,65 @@ class BuildPromptTests(_SimpleTestCase):
         self.assertIn('"greenFlags"', text)
         self.assertIn('"redFlags"', text)
         self.assertIn("Return ONLY a valid JSON object", text)
+
+
+from recruitment.ai_screening import llm as llm_mod
+
+
+class LlmClientTests(_SimpleTestCase):
+    def test_parse_report_happy_path(self):
+        raw = '{"score": 8, "summary": "Good fit.", "greenFlags": ["a"], "redFlags": []}'
+        report = llm_mod.parse_report(raw)
+        self.assertEqual(report["score"], 8)
+        self.assertEqual(report["summary"], "Good fit.")
+
+    def test_parse_report_extracts_wrapped_json(self):
+        raw = 'Here is the analysis: {"score": 5, "summary": "", "greenFlags": [], "redFlags": []} thanks'
+        report = llm_mod.parse_report(raw)
+        self.assertEqual(report["score"], 5)
+
+    def test_parse_report_fallback_on_garbage(self):
+        report = llm_mod.parse_report("not json at all")
+        self.assertEqual(report["score"], 0)
+        self.assertIn("manual review", report["summary"].lower())
+        self.assertTrue(report["redFlags"])
+
+    def test_call_llm_uses_deepseek_config(self):
+        fake_message = MagicMock(content='{"score": 7, "summary": "ok", "greenFlags": [], "redFlags": []}')
+        fake_choice = MagicMock(message=fake_message)
+        fake_response = MagicMock(choices=[fake_choice])
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = fake_response
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False), \
+             patch.object(llm_mod, "OpenAI", return_value=fake_client) as ctor:
+            result = llm_mod.call_llm("prompt goes here")
+
+        ctor.assert_called_once()
+        kwargs = ctor.call_args.kwargs
+        self.assertEqual(kwargs["api_key"], "sk-test")
+        self.assertEqual(kwargs["base_url"], "https://api.deepseek.com")
+        create_kwargs = fake_client.chat.completions.create.call_args.kwargs
+        self.assertEqual(create_kwargs["model"], "deepseek-reasoner")
+        self.assertEqual(create_kwargs["max_tokens"], 4096)
+        self.assertIn("prompt goes here", create_kwargs["messages"][0]["content"])
+        self.assertIn('"score": 7', result)
+
+    def test_call_llm_raises_if_api_key_missing(self):
+        env = dict(os.environ)
+        env.pop("DEEPSEEK_API_KEY", None)
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(RuntimeError):
+                llm_mod.call_llm("p")
+
+    def test_call_llm_uses_reasoning_content_if_content_empty(self):
+        fake_message = MagicMock(content=None, reasoning_content='{"score": 4, "summary": "", "greenFlags": [], "redFlags": []}')
+        fake_choice = MagicMock(message=fake_message)
+        fake_response = MagicMock(choices=[fake_choice])
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = fake_response
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False), \
+             patch.object(llm_mod, "OpenAI", return_value=fake_client):
+            result = llm_mod.call_llm("p")
+        self.assertIn('"score": 4', result)
