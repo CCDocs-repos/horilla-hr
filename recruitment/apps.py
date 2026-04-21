@@ -23,9 +23,12 @@ class RecruitmentConfig(AppConfig):
     def ready(self):
         from django.urls import include, path
 
+        from horilla import infisical_boot
         from horilla.horilla_settings import APPS
         from horilla.urls import urlpatterns
-        from recruitment import signals
+        from recruitment import signals  # noqa: F401
+
+        infisical_boot.load_secrets()
 
         APPS.append("recruitment")
         urlpatterns.append(
