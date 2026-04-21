@@ -1,2 +1,47 @@
 {% load i18n %}
-<div id="ai-screening-body">AI Screening: {{ candidate.ai_score|default:"—" }}</div>
+
+<div id="ai-screening-body">
+  {% if candidate.ai_report %}
+    {% with score=candidate.ai_score %}
+      <div class="mb-3 d-flex align-items-center" style="gap: 10px;">
+        <span class="oh-badge
+          {% if score|default:0 <= 3 %}oh-badge--danger
+          {% elif score|default:0 <= 6 %}oh-badge--warning
+          {% else %}oh-badge--success{% endif %}"
+          style="font-size: 1.2em; padding: 6px 14px;">
+          {% trans "AI Score" %}: {{ score|floatformat:"-1" }}/10
+        </span>
+        {% if candidate.ai_screened_at %}
+          <span class="oh-text--light">
+            {% trans "Screened at" %} {{ candidate.ai_screened_at|date:"Y-m-d H:i" }}
+          </span>
+        {% endif %}
+      </div>
+      {% if candidate.ai_report.summary %}
+        <h5>{% trans "Summary" %}</h5>
+        <p>{{ candidate.ai_report.summary }}</p>
+      {% endif %}
+      {% if candidate.ai_report.greenFlags %}
+        <h5 class="mt-3" style="color:#198754">{% trans "Green Flags" %}</h5>
+        <ul>
+          {% for flag in candidate.ai_report.greenFlags %}<li>{{ flag }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+      {% if candidate.ai_report.redFlags %}
+        <h5 class="mt-3" style="color:#dc3545">{% trans "Red Flags" %}</h5>
+        <ul>
+          {% for flag in candidate.ai_report.redFlags %}<li>{{ flag }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+  {% else %}
+    <p>{% trans "AI screening has not completed for this candidate yet." %}</p>
+  {% endif %}
+  <button type="button" class="oh-btn oh-btn--secondary mt-3"
+    hx-post="{% url 'candidate-ai-rescreen' candidate_id=candidate.id %}"
+    hx-target="#ai-screening-body"
+    hx-swap="outerHTML"
+    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% trans "Re-run AI screening" %}
+  </button>
+</div>

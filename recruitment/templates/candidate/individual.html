@@ -185,6 +185,9 @@
                         <a href="#" class="oh-general__tab-link" data-action="general-tab" data-target="#resume">{% trans "Resume" %}</a>
                     </li>
                     <li class="oh-general__tab">
+                        <a href="#" class="oh-general__tab-link" data-action="general-tab" data-target="#aiscreen">{% trans "AI Screening" %}</a>
+                    </li>
+                    <li class="oh-general__tab">
                         <a href="#" class="oh-general__tab-link" data-action="general-tab" data-target="#survey">{% trans "Survey" %}</a>
                     </li>
                     <li class="oh-general__tab">
@@ -380,6 +383,9 @@
                         <div class="oh-modal__dialog-body" id="createTarget"></div>
                     </div>
                 </div>
+            </div>
+            <div class="oh-general__tab-target oh-profile__info-tab mb-4 d-none" id="aiscreen">
+                {% include "candidate/ai_screening_section.html" %}
             </div>
             <div class="oh-general__tab-target oh-profile__info-tab mb-4 d-none" id="history">
                 {% include "candidate/history.html" %}
