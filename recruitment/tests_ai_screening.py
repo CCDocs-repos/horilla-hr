@@ -227,3 +227,97 @@ class LlmClientTests(_SimpleTestCase):
              patch.object(llm_mod, "OpenAI", return_value=fake_client):
             result = llm_mod.call_llm("p")
         self.assertIn('"score": 4', result)
+
+
+from django.test import TestCase
+from unittest.mock import patch
+
+from recruitment.models import Candidate, Recruitment, Stage
+from base.models import JobPosition, Department, Company
+from recruitment.ai_screening import service as svc
+
+
+class ScreenCandidateTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Patch threading.Thread globally so candidate-create fixtures don't
+        # spawn real screening threads. Works whether or not recruitment.signals
+        # has imported threading yet (Task 9 adds that import).
+        cls._thread_patch = patch("threading.Thread")
+        cls._thread_patch.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._thread_patch.stop()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.company = Company.objects.create(company="Acme")
+        self.department = Department.objects.create(department="Ops")
+        self.job_position = JobPosition.objects.create(
+            job_position="Agent", department_id=self.department
+        )
+        self.recruitment = Recruitment.objects.create(
+            title="Call Center Agent",
+            description="Handle inbound calls.",
+            company_id=self.company,
+            job_position_id=self.job_position,
+            vacancy=5,
+        )
+        self.stage = Stage.objects.filter(recruitment_id=self.recruitment).first()
+        self.resume = SimpleUploadedFile(
+            "resume.pdf", b"%PDF-1.4 placeholder", content_type="application/pdf"
+        )
+        self.candidate = Candidate.objects.create(
+            name="Jane Doe",
+            email="jane@example.com",
+            mobile="1234567890",
+            resume=self.resume,
+            recruitment_id=self.recruitment,
+            job_position_id=self.job_position,
+            stage_id=self.stage,
+        )
+
+    def test_screen_candidate_persists_score_and_report(self):
+        report_json = '{"score": 7, "summary": "Good fit.", "greenFlags": ["x"], "redFlags": []}'
+        with patch.object(svc, "extract_cv_text", return_value="cv text"), \
+             patch.object(svc, "call_llm", return_value=report_json):
+            svc.screen_candidate(self.candidate.id)
+
+        self.candidate.refresh_from_db()
+        self.assertEqual(self.candidate.ai_score, 7)
+        self.assertEqual(self.candidate.ai_report["summary"], "Good fit.")
+        self.assertIsNotNone(self.candidate.ai_screened_at)
+
+    def test_screen_candidate_swallows_llm_errors(self):
+        with patch.object(svc, "extract_cv_text", return_value="cv"), \
+             patch.object(svc, "call_llm", side_effect=RuntimeError("deepseek 500")):
+            svc.screen_candidate(self.candidate.id)  # must not raise
+
+        self.candidate.refresh_from_db()
+        self.assertIsNone(self.candidate.ai_score)
+        self.assertIsNone(self.candidate.ai_screened_at)
+
+    def test_screen_candidate_noop_for_missing_candidate(self):
+        # Must not raise.
+        svc.screen_candidate(999999)
+
+    def test_screen_candidate_update_avoids_post_save_signal(self):
+        # Uses queryset.update() rather than instance.save() to avoid
+        # re-triggering the AI signal on persist.
+        report_json = '{"score": 5, "summary": "", "greenFlags": [], "redFlags": []}'
+        save_calls = []
+        original_save = Candidate.save
+
+        def tracking_save(self, *a, **kw):
+            save_calls.append(self.pk)
+            return original_save(self, *a, **kw)
+
+        with patch.object(svc, "extract_cv_text", return_value="cv"), \
+             patch.object(svc, "call_llm", return_value=report_json), \
+             patch.object(Candidate, "save", tracking_save):
+            svc.screen_candidate(self.candidate.id)
+
+        # Only the setUp create should have called save(); screen_candidate should not.
+        self.assertNotIn(self.candidate.id, save_calls)
