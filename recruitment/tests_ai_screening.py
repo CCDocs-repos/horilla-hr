@@ -28,9 +28,18 @@ class InfisicalBootTests(SimpleTestCase):
             self.assertEqual(os.environ.get("DEEPSEEK_API_KEY"), "sk-test-123")
 
     def test_load_secrets_swallows_errors(self):
-        with patch.object(infisical_boot, "InfisicalSDKClient", side_effect=RuntimeError("boom")):
-            # Must not raise — Horilla must boot even if Infisical is unreachable.
+        env = {
+            "INFISICAL_SITE_URL": "https://secrets.example.com",
+            "INFISICAL_CLIENT_ID": "id",
+            "INFISICAL_CLIENT_SECRET": "secret",
+            "INFISICAL_PROJECT_ID": "proj",
+        }
+        with patch.dict(os.environ, env, clear=False), \
+             patch.object(infisical_boot, "InfisicalSDKClient", side_effect=RuntimeError("boom")) as ctor:
+            # Must not raise — Horilla must boot even if Infisical throws.
             infisical_boot.load_secrets()
+            # Confirm we actually exercised the error path.
+            ctor.assert_called_once()
 
     def test_load_secrets_does_not_overwrite_existing_env(self):
         fake_secret = MagicMock(secretKey="DEEPSEEK_API_KEY", secretValue="sk-from-infisical")
