@@ -126,7 +126,7 @@ from horilla import infisical_boot
 
 class InfisicalBootTests(SimpleTestCase):
     def test_load_secrets_hydrates_env_from_sdk(self):
-        fake_secret = MagicMock(secret_key="DEEPSEEK_API_KEY", secret_value="sk-test-123")
+        fake_secret = MagicMock(secretKey="DEEPSEEK_API_KEY", secretValue="sk-test-123")
         fake_response = MagicMock(secrets=[fake_secret])
 
         fake_client = MagicMock()
@@ -151,7 +151,7 @@ class InfisicalBootTests(SimpleTestCase):
             infisical_boot.load_secrets()
 
     def test_load_secrets_does_not_overwrite_existing_env(self):
-        fake_secret = MagicMock(secret_key="DEEPSEEK_API_KEY", secret_value="sk-from-infisical")
+        fake_secret = MagicMock(secretKey="DEEPSEEK_API_KEY", secretValue="sk-from-infisical")
         fake_response = MagicMock(secrets=[fake_secret])
         fake_client = MagicMock()
         fake_client.secrets.list_secrets.return_value = fake_response
@@ -228,13 +228,16 @@ def load_secrets() -> None:
             include_imports=True,
             recursive=False,
         )
-        secrets = getattr(response, "secrets", response)
+        secrets = getattr(response, "secrets", None) or []
+        hydrated = 0
         for secret in secrets:
-            key = getattr(secret, "secret_key", None)
-            value = getattr(secret, "secret_value", None)
+            # Infisical SDK uses camelCase (secretKey / secretValue).
+            key = getattr(secret, "secretKey", None) or getattr(secret, "secret_key", None)
+            value = getattr(secret, "secretValue", None) or getattr(secret, "secret_value", None)
             if key and value is not None and key not in os.environ:
                 os.environ[key] = value
-        logger.info("Infisical: hydrated %d secret(s) into os.environ", len(secrets))
+                hydrated += 1
+        logger.info("Infisical: hydrated %d secret(s) into os.environ", hydrated)
     except Exception:
         logger.exception("Failed to load secrets from Infisical; continuing without.")
 ```
