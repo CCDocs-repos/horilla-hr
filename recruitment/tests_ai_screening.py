@@ -152,10 +152,10 @@ class BuildPromptTests(_SimpleTestCase):
     def test_prompt_truncates_cv_at_8000(self):
         c = self._make_candidate()
         r = self._make_recruitment()
-        cv = "x" * 20000
+        sentinel = "\u00a7"  # § — absent from the template and fixture data
+        cv = sentinel * 20000
         text = prompt_mod.build_prompt(c, cv, r)
-        # 8000 x's in the CV section, not 20000.
-        self.assertEqual(text.count("x"), 8000)
+        self.assertEqual(text.count(sentinel), 8000)
 
     def test_prompt_requests_strict_json_output(self):
         c = self._make_candidate()

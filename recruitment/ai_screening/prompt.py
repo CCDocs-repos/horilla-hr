@@ -6,11 +6,7 @@ buildPrompt(), minus deal-breakers and Loom video (not in Horilla's schema).
 
 from datetime import date
 
-# 7997 rather than 8000 so that text.count("x") equals exactly 8000 when the CV
-# is all x's: the static template contributes 3 x's ("expert", "example" in the
-# candidate's email placeholder text, and "explanation"), leaving room for 7997.
-# See tests_ai_screening.BuildPromptTests.test_prompt_truncates_cv_at_8000.
-MAX_CV_CHARS = 7997
+MAX_CV_CHARS = 8000
 
 
 def _cv_truncate(text: str) -> str:
