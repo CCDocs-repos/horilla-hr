@@ -325,3 +325,87 @@ class ScreenCandidateTests(TestCase):
 
         # Only the setUp create should have called save(); screen_candidate should not.
         self.assertNotIn(self.candidate.id, save_calls)
+
+
+import threading
+from unittest.mock import patch
+
+from recruitment import signals as rec_signals
+
+
+class CandidateAiSignalTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(company="Acme2")
+        # Bypass Department.save() bug via bulk_create.
+        Department.objects.bulk_create([Department(department="Ops2")])
+        self.department = Department.objects.get(department="Ops2")
+        self.job_position = JobPosition.objects.create(
+            job_position="Agent", department_id=self.department
+        )
+        self.recruitment = Recruitment.objects.create(
+            title="Agent",
+            description="",
+            company_id=self.company,
+            job_position_id=self.job_position,
+            vacancy=1,
+        )
+        self.stage = Stage.objects.filter(recruitment_id=self.recruitment).first()
+
+    def _make_candidate(self):
+        resume = SimpleUploadedFile("r.pdf", b"%PDF-1.4", content_type="application/pdf")
+        return Candidate.objects.create(
+            name="X",
+            email="x@e.com",
+            mobile="1",
+            resume=resume,
+            recruitment_id=self.recruitment,
+            job_position_id=self.job_position,
+            stage_id=self.stage,
+        )
+
+    def test_signal_enqueues_screening_for_new_candidate(self):
+        called = threading.Event()
+
+        def fake_screen(cid):
+            called.set()
+
+        with patch.object(rec_signals, "screen_candidate", side_effect=fake_screen), \
+             patch.object(rec_signals.threading, "Thread") as ThreadCls:
+            # Run the target synchronously instead of spawning a thread, so
+            # assertion is deterministic.
+            def fake_thread(target, daemon):
+                class _T:
+                    def start(self_inner):
+                        target()
+                return _T()
+            ThreadCls.side_effect = fake_thread
+            self._make_candidate()
+            self.assertTrue(called.is_set())
+
+    def test_signal_does_not_fire_on_update(self):
+        c = self._make_candidate()
+        with patch.object(rec_signals, "screen_candidate") as mock_screen:
+            c.name = "Updated"
+            c.save()
+            mock_screen.assert_not_called()
+
+    def test_signal_swallows_screening_errors(self):
+        with patch.object(rec_signals, "screen_candidate", side_effect=RuntimeError("kaboom")):
+            # Must not raise — candidate creation path must survive an AI failure.
+            c = self._make_candidate()
+            self.assertIsNotNone(c.id)
+
+    def test_signal_skips_candidate_without_resume(self):
+        with patch.object(rec_signals, "screen_candidate") as mock_screen, \
+             patch.object(rec_signals.threading, "Thread") as ThreadCls:
+            ThreadCls.side_effect = lambda target, daemon: type("T", (), {"start": lambda s: target()})()
+            # Candidate without resume file.
+            Candidate.objects.create(
+                name="NoResume",
+                email="no@e.com",
+                mobile="1",
+                recruitment_id=self.recruitment,
+                job_position_id=self.job_position,
+                stage_id=self.stage,
+            )
+            mock_screen.assert_not_called()
