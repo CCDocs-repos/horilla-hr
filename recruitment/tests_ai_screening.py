@@ -254,7 +254,11 @@ class ScreenCandidateTests(TestCase):
 
     def setUp(self):
         self.company = Company.objects.create(company="Acme")
-        self.department = Department.objects.create(department="Ops")
+        # Bypass Department.save() bug (passes save-kwargs to clean) by
+        # using bulk_create, which skips save() entirely. Project constraint:
+        # do not modify existing production models.
+        Department.objects.bulk_create([Department(department="Ops")])
+        self.department = Department.objects.get(department="Ops")
         self.job_position = JobPosition.objects.create(
             job_position="Agent", department_id=self.department
         )

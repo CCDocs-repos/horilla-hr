@@ -133,7 +133,7 @@ class Department(HorillaModel):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        self.clean()
+        self.clean(*args, **kwargs)
         return self
 
     def __str__(self):
