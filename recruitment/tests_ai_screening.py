@@ -1,9 +1,15 @@
+import io
 import os
 from unittest.mock import MagicMock, patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 
 from horilla import infisical_boot
+
+from recruitment.ai_screening import cv_text
+
+_SimpleTestCase = SimpleTestCase
 
 
 class InfisicalBootTests(SimpleTestCase):
@@ -58,3 +64,43 @@ class InfisicalBootTests(SimpleTestCase):
              patch.object(infisical_boot, "InfisicalSDKClient", return_value=fake_client):
             infisical_boot.load_secrets()
             self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "sk-already-set")
+
+
+class CvTextTests(_SimpleTestCase):
+    def test_unknown_extension_returns_placeholder(self):
+        f = SimpleUploadedFile("resume.xyz", b"nothing", content_type="application/octet-stream")
+        text = cv_text.extract_cv_text(f)
+        self.assertIn("Unsupported", text)
+
+    def test_corrupt_pdf_returns_placeholder(self):
+        f = SimpleUploadedFile("resume.pdf", b"not a real pdf", content_type="application/pdf")
+        text = cv_text.extract_cv_text(f)
+        self.assertIn("could not be parsed", text)
+
+    def test_pdf_happy_path_uses_pdfplumber(self):
+        f = SimpleUploadedFile("resume.pdf", b"%PDF-1.4 fake", content_type="application/pdf")
+        fake_page = type("P", (), {"extract_text": lambda self: "Jane Doe\nPython, Django"})()
+        fake_pdf = type("PDF", (), {
+            "pages": [fake_page],
+            "__enter__": lambda self: self,
+            "__exit__": lambda self, *a: False,
+        })()
+        with patch.object(cv_text, "pdfplumber") as plumber:
+            plumber.open.return_value = fake_pdf
+            text = cv_text.extract_cv_text(f)
+        self.assertIn("Jane Doe", text)
+        self.assertIn("Django", text)
+
+    def test_docx_happy_path(self):
+        f = SimpleUploadedFile("resume.docx", b"fake docx", content_type="application/msword")
+        fake_para = type("P", (), {"text": "Experienced SDR"})()
+        fake_doc = type("D", (), {"paragraphs": [fake_para]})()
+        with patch.object(cv_text, "docx") as dcx:
+            dcx.Document.return_value = fake_doc
+            text = cv_text.extract_cv_text(f)
+        self.assertIn("Experienced SDR", text)
+
+    def test_truncates_to_8000_chars(self):
+        big = "a" * 12000
+        result = cv_text._truncate(big)
+        self.assertEqual(len(result), 8000)
