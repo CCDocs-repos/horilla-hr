@@ -997,7 +997,8 @@ from recruitment import signals as rec_signals
 class CandidateAiSignalTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(company="Acme2")
-        self.department = Department.objects.create(department="Ops2")
+        Department.objects.bulk_create([Department(department="Ops2")])
+        self.department = Department.objects.get(department="Ops2")
         self.job_position = JobPosition.objects.create(
             job_position="Agent", department_id=self.department
         )
@@ -1186,7 +1187,8 @@ class RerunAiScreeningViewTests(TestCase):
 
     def setUp(self):
         self.company = Company.objects.create(company="Acme3")
-        self.department = Department.objects.create(department="Ops3")
+        Department.objects.bulk_create([Department(department="Ops3")])
+        self.department = Department.objects.get(department="Ops3")
         self.job_position = JobPosition.objects.create(
             job_position="Agent", department_id=self.department
         )
