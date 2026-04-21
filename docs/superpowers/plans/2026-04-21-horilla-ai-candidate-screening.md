@@ -194,7 +194,7 @@ handle the case where an expected secret (e.g. DEEPSEEK_API_KEY) is missing.
 import logging
 import os
 
-from infisicalsdk import InfisicalSDKClient
+from infisical_sdk import InfisicalSDKClient
 
 logger = logging.getLogger(__name__)
 
