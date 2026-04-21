@@ -630,6 +630,11 @@ urlpatterns = [
     ),
     path("candidate-view-file/<int:id>", views.view_file, name="candidate-view-file"),
     path(
+        "candidate/<int:candidate_id>/ai-rescreen/",
+        views.rescreen_candidate_ai,
+        name="candidate-ai-rescreen",
+    ),
+    path(
         "candidate-document-create/<int:id>",
         views.document_create,
         name="candidate-document-create",

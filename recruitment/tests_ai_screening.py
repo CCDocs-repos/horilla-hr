@@ -409,3 +409,99 @@ class CandidateAiSignalTests(TestCase):
                 stage_id=self.stage,
             )
             mock_screen.assert_not_called()
+
+
+from django.contrib.auth import get_user_model
+from django.db import connection
+from django.urls import reverse
+
+from employee.models import Employee
+from horilla.horilla_middlewares import _thread_locals
+
+
+class RerunAiScreeningViewTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._thread_patch = patch("threading.Thread")
+        cls._thread_patch.start()
+        # Horilla adds is_new_employee to auth.User via add_to_class without a
+        # migration, so the test DB's auth_user table is missing the column.
+        # Add it here if absent so create_user() doesn't fail.
+        with connection.cursor() as cur:
+            cols = [row[1] for row in cur.execute("PRAGMA table_info(auth_user)").fetchall()]
+            if "is_new_employee" not in cols:
+                cur.execute(
+                    "ALTER TABLE auth_user ADD COLUMN is_new_employee bool NOT NULL DEFAULT 0"
+                )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._thread_patch.stop()
+        super().tearDownClass()
+
+    def tearDown(self):
+        # Horilla's ThreadLocalMiddleware stores request.user in _thread_locals.
+        # Clear it after each HTTP test so later TestCase classes that create
+        # model objects don't inherit a stale user reference (which would cause
+        # FK integrity errors on teardown once that user is rolled back).
+        if hasattr(_thread_locals, "request"):
+            del _thread_locals.request
+
+    def setUp(self):
+        self.company = Company.objects.create(company="Acme3")
+        Department.objects.bulk_create([Department(department="Ops3")])
+        self.department = Department.objects.get(department="Ops3")
+        self.job_position = JobPosition.objects.create(
+            job_position="Agent", department_id=self.department
+        )
+        self.recruitment = Recruitment.objects.create(
+            title="Agent",
+            description="desc",
+            company_id=self.company,
+            job_position_id=self.job_position,
+            vacancy=1,
+        )
+        self.stage = Stage.objects.filter(recruitment_id=self.recruitment).first()
+        resume = SimpleUploadedFile("r.pdf", b"%PDF-1.4", content_type="application/pdf")
+        self.candidate = Candidate.objects.create(
+            name="Y",
+            email="y@e.com",
+            mobile="1",
+            resume=resume,
+            recruitment_id=self.recruitment,
+            job_position_id=self.job_position,
+            stage_id=self.stage,
+        )
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True
+        )
+        # Horilla's CompanyMiddleware calls logout() when the authenticated user
+        # has no linked Employee.  Create a minimal Employee to avoid that.
+        Employee.objects.create(
+            employee_user_id=self.user,
+            employee_first_name="Admin",
+            email="admin@test.com",
+            phone="0",
+        )
+        self.client.force_login(self.user)
+
+    def test_rerun_view_invokes_screen_candidate_inline(self):
+        with patch("recruitment.views.views.screen_candidate") as mock_screen:
+            url = reverse("candidate-ai-rescreen", kwargs={"candidate_id": self.candidate.id})
+            response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        mock_screen.assert_called_once_with(self.candidate.id)
+
+    def test_rerun_view_returns_404_for_missing_candidate(self):
+        url = reverse("candidate-ai-rescreen", kwargs={"candidate_id": 999999})
+        with patch("recruitment.views.views.screen_candidate"):
+            response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_rerun_view_rejects_anonymous(self):
+        self.client.logout()
+        url = reverse("candidate-ai-rescreen", kwargs={"candidate_id": self.candidate.id})
+        response = self.client.post(url)
+        self.assertIn(response.status_code, (302, 401, 403))

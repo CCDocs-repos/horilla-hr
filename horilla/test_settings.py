@@ -7,3 +7,8 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# Disable HTTPS redirect so Django test client (HTTP) reaches views directly.
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
