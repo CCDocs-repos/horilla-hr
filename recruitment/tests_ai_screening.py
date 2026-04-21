@@ -104,3 +104,64 @@ class CvTextTests(_SimpleTestCase):
         big = "a" * 12000
         result = cv_text._truncate(big)
         self.assertEqual(len(result), 8000)
+
+
+from recruitment.ai_screening import prompt as prompt_mod
+
+
+class BuildPromptTests(_SimpleTestCase):
+    def _make_candidate(self, **overrides):
+        c = MagicMock()
+        c.name = overrides.get("name", "Jane Doe")
+        c.email = overrides.get("email", "jane@example.com")
+        c.portfolio = overrides.get("portfolio", "")
+        c.schedule_date = overrides.get("schedule_date", None)
+        return c
+
+    def _make_recruitment(self, title="Call Center Agent", description="Handle inbound calls.", skills=("English", "Sales")):
+        r = MagicMock()
+        r.title = title
+        r.description = description
+        skills_qs = MagicMock()
+        skills_qs.values_list.return_value = list(skills)
+        r.skills = MagicMock()
+        r.skills.all.return_value = [MagicMock(**{"__str__.return_value": s}) for s in skills]
+        return r
+
+    def test_prompt_includes_core_sections(self):
+        c = self._make_candidate()
+        r = self._make_recruitment()
+        text = prompt_mod.build_prompt(c, "Five years of SaaS sales.", r)
+        self.assertIn("Call Center Agent", text)
+        self.assertIn("Handle inbound calls.", text)
+        self.assertIn("Jane Doe", text)
+        self.assertIn("jane@example.com", text)
+        self.assertIn("Five years of SaaS sales.", text)
+        self.assertIn("1. English", text)
+        self.assertIn("2. Sales", text)
+
+    def test_prompt_handles_missing_description_and_skills(self):
+        c = self._make_candidate()
+        r = self._make_recruitment(description=None, skills=())
+        r.skills.all.return_value = []
+        text = prompt_mod.build_prompt(c, "cv", r)
+        self.assertIn("Call Center Agent", text)
+        # Should not crash; requirements section should still render (possibly empty).
+        self.assertIn("Key requirements", text)
+
+    def test_prompt_truncates_cv_at_8000(self):
+        c = self._make_candidate()
+        r = self._make_recruitment()
+        cv = "x" * 20000
+        text = prompt_mod.build_prompt(c, cv, r)
+        # 8000 x's in the CV section, not 20000.
+        self.assertEqual(text.count("x"), 8000)
+
+    def test_prompt_requests_strict_json_output(self):
+        c = self._make_candidate()
+        r = self._make_recruitment()
+        text = prompt_mod.build_prompt(c, "cv", r)
+        self.assertIn('"score"', text)
+        self.assertIn('"greenFlags"', text)
+        self.assertIn('"redFlags"', text)
+        self.assertIn("Return ONLY a valid JSON object", text)
