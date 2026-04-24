@@ -65,6 +65,76 @@
   </div>
   <div class="oh-checkpoint-badge text-danger mb-2" id="selectedCandidate" style="display: none">
   </div>
+
+  <!-- bulk actions bar (86exb4muj): bulk reject + bulk stage change -->
+  <div id="candidateBulkActions" class="d-inline-flex align-items-center ms-2" style="display: none !important; gap: 6px; vertical-align: middle;">
+    {% if perms.recruitment.add_rejectedcandidate %}
+    <button type="button"
+      id="candidateBulkRejectBtn"
+      class="oh-btn oh-btn--danger-outline"
+      data-toggle="oh-modal-toggle"
+      data-target="#candidateBulkRejectModal"
+      title="{% trans 'Reject selected candidates' %}">
+      <ion-icon name="thumbs-down-outline"></ion-icon>
+      {% trans "Bulk Reject" %}
+    </button>
+    {% endif %}
+    {% if perms.recruitment.change_candidate %}
+    <select id="candidateBulkStageSelect" class="oh-select" style="width: 220px;">
+      <option value="" selected>{% trans "Bulk stage change..." %}</option>
+      {# Render each recruitment's stages as an optgroup. Dedup via template cache flag. #}
+      {% regroup data by recruitment_id as rec_groups %}
+      {% for group in rec_groups %}
+        <optgroup label="{{ group.grouper }}">
+          {% for stage in group.grouper.stage_set.all|dictsort:"sequence" %}
+            <option value="{{ stage.id }}" data-rec-id="{{ group.grouper.id }}">{{ stage.stage }}</option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+
+  <!-- bulk reject modal -->
+  {% if perms.recruitment.add_rejectedcandidate %}
+  <div class="oh-modal" id="candidateBulkRejectModal" role="dialog" aria-labelledby="candidateBulkRejectModal" aria-hidden="true">
+    <div class="oh-modal__dialog">
+      <div class="oh-modal__dialog-header">
+        <span class="oh-modal__dialog-title">
+          <h5>{% trans "Bulk Reject Candidates" %}</h5>
+        </span>
+        <button class="oh-modal__close" aria-label="Close" onclick="$('#candidateBulkRejectModal').removeClass('oh-modal--show');">
+          <ion-icon name="close-outline"></ion-icon>
+        </button>
+      </div>
+      <div class="oh-modal__dialog-body">
+        <p id="candidateBulkRejectCountMsg" class="text-muted"></p>
+        <label class="oh-label">{% trans "Reason (shown on each candidate)" %}</label>
+        <textarea id="candidateBulkRejectDescription" class="oh-input w-100" rows="3" maxlength="255"
+          placeholder="{% trans 'Why are these candidates being rejected?' %}"></textarea>
+        <div class="mt-3 text-end">
+          <button type="button" class="oh-btn oh-btn--light-bkg"
+            onclick="$('#candidateBulkRejectModal').removeClass('oh-modal--show');">
+            {% trans "Cancel" %}
+          </button>
+          <button type="button" id="candidateBulkRejectSubmit" class="oh-btn oh-btn--danger">
+            {% trans "Reject Candidates" %}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- undo toast (reject) -->
+  <div id="candidateRejectUndoToast"
+    style="display: none; position: fixed; bottom: 24px; right: 24px; z-index: 3000; min-width: 320px; padding: 12px 16px; border-radius: 6px; background: #212529; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+    <span id="candidateRejectUndoToastMsg"></span>
+    <button type="button" id="candidateRejectUndoBtn"
+      class="oh-btn oh-btn--secondary ms-3" style="padding: 4px 10px;">
+      {% trans "Undo" %}
+    </button>
+  </div>
   <!-- start of select all -->
   <!-- start of column toggle button -->
   <div class="oh-table_sticky--wrapper">
@@ -260,12 +330,48 @@
                 </div>
               </div>
             {% endif %}
+            {% if perms.recruitment.change_candidate or request.user|is_stagemanager %}
+              <div class="oh-sticky-table__td">
+                {% include "candidate/_candidate_action_bar.html" with c=cand %}
+              </div>
+            {% endif %}
             {% if perms.recruitment.change_candidate or perms.recruitment.delete_candidate %}
               <div href="#" style="color: inherit;text-decoration: none;" class="oh-sticky-table__td oh-sticky-table__right">
                 <div class="oh-btn-group">
                   {% if perms.recruitment.change_candidate %}
                   <a href="{% url 'rec-candidate-update' cand.id %}" hx-target='#updateFormContainer' hx-swap='innerHTML'
                     class="oh-btn oh-btn--light-bkg w-100" title="Edit"><ion-icon name="create-outline"></ion-icon></a>
+                  {# inline stage-change dropdown (86exb4muj): single-candidate stage change without leaving list view. #}
+                  <div class="oh-dropdown inline-stage-change-kebab" x-data="{open: false}" style="position: relative;">
+                    <button type="button"
+                      class="oh-btn oh-btn--light-bkg w-100"
+                      title='{% trans "Change stage" %}'
+                      @click="open = !open">
+                      <ion-icon name="swap-vertical-outline"></ion-icon>
+                    </button>
+                    <div class="oh-dropdown__menu" x-show="open" @click.outside="open = false"
+                      style="right: 0; left: auto; min-width: 220px; padding: 4px;">
+                      <div class="oh-dropdown__items" style="padding: 4px;">
+                        <div style="font-size: 11px; color: #666; padding: 4px 8px;">
+                          {% trans "Change stage" %}
+                        </div>
+                        <select class="oh-select w-100 inline-stage-change-select"
+                          data-cand-id="{{cand.id}}"
+                          data-current-stage="{{cand.stage_id_id|default:cand.stage_id.id}}"
+                          hx-post="{% url 'candidate-stage-change' %}"
+                          hx-trigger="change"
+                          hx-swap="none"
+                          hx-vals='js:{canIds: event.target.dataset.candId, stageId: event.target.value}'
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          onchange="if(this.value){ showInlineStageChangeToast(this); }">
+                          <option value="">{% trans "Select stage..." %}</option>
+                          {% for stage in cand.recruitment_id.stage_set.all|dictsort:"sequence" %}
+                            <option value="{{stage.id}}" {% if stage.id == cand.stage_id_id or stage.id == cand.stage_id.id %}selected disabled{% endif %}>{{stage.stage}}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                   {% endif %}
                   {% if perms.recruitment.delete_candidate %}
                   {% if cand.is_active %}
@@ -643,4 +749,155 @@
 
   updateCount()
   tickCandidateCheckboxes()
+
+  /* -------- 86exb4muj: bulk actions + undo toast -------- */
+
+  function getSelectedCandidateIds() {
+    try {
+      return makeListUnique1(JSON.parse($("#selectedInstances").attr("data-ids") || "[]"));
+    } catch (e) { return []; }
+  }
+
+  function toggleCandidateBulkBar() {
+    var ids = getSelectedCandidateIds();
+    if (ids.length) {
+      document.getElementById("candidateBulkActions").style.display = "inline-flex";
+    } else {
+      document.getElementById("candidateBulkActions").style.display = "none";
+    }
+  }
+
+  $(document).on("change", ".all-candidate-row", function(){ setTimeout(toggleCandidateBulkBar, 0); });
+  $(document).on("click", "#unselectAllInstances, #selectAllInstances", function(){ setTimeout(toggleCandidateBulkBar, 100); });
+  setTimeout(toggleCandidateBulkBar, 100);
+
+  function showRejectUndoToast(message, rejectionIds) {
+    $("#candidateRejectUndoToastMsg").text(message);
+    if (!rejectionIds || !rejectionIds.length) {
+      $("#candidateRejectUndoBtn").hide();
+    } else {
+      $("#candidateRejectUndoBtn").show();
+    }
+    $("#candidateRejectUndoToast").stop(true, true).fadeIn(120);
+    var hideTimer = setTimeout(function(){
+      $("#candidateRejectUndoToast").fadeOut(200);
+    }, 8000);
+    $("#candidateRejectUndoBtn").off("click").on("click", function(){
+      clearTimeout(hideTimer);
+      var pending = (rejectionIds || []).length;
+      var done = 0;
+      if (!pending) return;
+      $.each(rejectionIds, function(_, rid){
+        $.ajax({
+          url: "/onboarding/delete-candidate-rejection/" + rid + "/",
+          method: "POST",
+          headers: { "X-CSRFToken": "{{ csrf_token }}" },
+          complete: function(){
+            done++;
+            if (done >= pending) {
+              $("#candidateRejectUndoToast").fadeOut(120);
+              if (window.htmx) {
+                htmx.ajax("GET", "{% url 'search-candidate' %}?{{pd}}&view=list", "#section");
+              }
+            }
+          }
+        });
+      });
+    });
+  }
+
+  $(document).on("click", "#candidateBulkRejectSubmit", function(){
+    var ids = getSelectedCandidateIds();
+    if (!ids.length) {
+      Swal.fire({ title: "{% trans 'No candidates selected' %}", icon: "warning" });
+      return;
+    }
+    var description = ($("#candidateBulkRejectDescription").val() || "").trim();
+    if (!description) description = "Bulk reject";
+    $.ajax({
+      url: "{% url 'candidate-bulk-reject' %}",
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      data: {
+        ids: JSON.stringify(ids),
+        description: description,
+        reason_ids: "[]"
+      },
+      success: function(resp){
+        $("#candidateBulkRejectModal").removeClass("oh-modal--show");
+        $("#candidateBulkRejectDescription").val("");
+        var rejectionIds = (resp.rejections || []).map(function(r){ return r.rejection_id; });
+        showRejectUndoToast(
+          (resp.created || 0) + " rejected" + (resp.skipped ? ", " + resp.skipped + " skipped" : ""),
+          rejectionIds
+        );
+        if (window.htmx) {
+          htmx.ajax("GET", "{% url 'search-candidate' %}?{{pd}}&view=list", "#section");
+        }
+      },
+      error: function(xhr){
+        Swal.fire({ title: "{% trans 'Bulk reject failed' %}", text: xhr.responseText || "", icon: "error" });
+      }
+    });
+  });
+
+  $(document).on("change", "#candidateBulkStageSelect", function(){
+    var stageId = $(this).val();
+    if (!stageId) return;
+    var self = this;
+    var ids = getSelectedCandidateIds();
+    if (!ids.length) {
+      Swal.fire({ title: "{% trans 'No candidates selected' %}", icon: "warning" });
+      $(self).val("");
+      return;
+    }
+    $.ajax({
+      url: "{% url 'candidate-bulk-stage-change' %}",
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      data: { ids: JSON.stringify(ids), stage_id: stageId },
+      success: function(resp){
+        $(self).val("");
+        if (window.htmx) {
+          htmx.ajax("GET", "{% url 'search-candidate' %}?{{pd}}&view=list", "#section");
+        }
+      },
+      error: function(xhr){
+        $(self).val("");
+        Swal.fire({ title: "{% trans 'Bulk stage change failed' %}", text: xhr.responseText || "", icon: "error" });
+      }
+    });
+  });
+
+  $(document).on("click", "#candidateBulkRejectBtn", function(){
+    var ids = getSelectedCandidateIds();
+    $("#candidateBulkRejectCountMsg").text(
+      ids.length + " " + "{% trans 'candidate(s) will be rejected.' %}"
+    );
+  });
+
+  function showInlineStageChangeToast(selectEl) {
+    var name = $(selectEl).find("option:selected").text();
+    $("#candidateRejectUndoToastMsg").text("{% trans 'Moved to' %} " + name);
+    $("#candidateRejectUndoBtn").hide();
+    $("#candidateRejectUndoToast").stop(true, true).fadeIn(100);
+    setTimeout(function(){
+      $("#candidateRejectUndoToast").fadeOut(200);
+      $("#candidateRejectUndoBtn").show();
+    }, 2500);
+  }
+  window.showInlineStageChangeToast = showInlineStageChangeToast;
+
+  $(document).on("htmx:afterRequest", function(evt){
+    var path = evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath || "";
+    if (path.indexOf("add-to-rejected-candidates") === -1) return;
+    if ((evt.detail.requestConfig && evt.detail.requestConfig.verb) !== "post") return;
+    $("#candidateRejectUndoBtn").hide();
+    $("#candidateRejectUndoToastMsg").text("{% trans 'Candidate rejected' %}");
+    $("#candidateRejectUndoToast").stop(true, true).fadeIn(100);
+    setTimeout(function(){
+      $("#candidateRejectUndoToast").fadeOut(200);
+      $("#candidateRejectUndoBtn").show();
+    }, 3000);
+  });
 </script>

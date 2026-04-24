@@ -1,0 +1,140 @@
+{% load i18n %}
+{% load horillafilters %}
+{% load recruitmentfilters %}
+{% comment %}
+    Shared candidate action bar partial.
+
+    Caller contract - ALWAYS include via:
+        {%+ include "candidate/_candidate_action_bar.html" with c=cand +%}
+    or (on individual profile view):
+        {%+ include "candidate/_candidate_action_bar.html" with c=candidate +%}
+
+    The partial expects a single local `c` referring to the Candidate object.
+    Anything using a sticky-table row should pass c=cand; anything using the
+    detail view should pass c=candidate.
+
+    Renders a single `.candidate-action-bar` flex row with text-labelled
+    buttons + a stage dropdown. Icon-only is intentionally avoided so the
+    ICP (non-technical recruiters) can scan actions without hover-tooltips.
+
+    Permission gates match the existing individual.html + candidate_list.html
+    behaviour so this partial never escalates access.
+
+    Caller must ensure #rejectModal + #rejectModalBody exist on the page
+    (the individual profile template already includes them; list view callers
+    should confirm the stock add-to-rejected-candidates modal flow is in
+    scope or supply their own #rejectModal shell).
+{% endcomment %}
+<div class="candidate-action-bar" role="group" aria-label="{% trans 'Candidate actions' %}">
+    {% if perms.recruitment.change_candidate or request.user|is_stagemanager %}
+        <label class="candidate-action-bar__label" for="candActionStage{{ c.id }}">
+            <ion-icon name="git-branch-outline" aria-hidden="true"></ion-icon>
+            <span>{% trans "Move Stage" %}</span>
+        </label>
+        <select
+            id="candActionStage{{ c.id }}"
+            name="stageId"
+            class="oh-select candidate-action-bar__stage-select"
+            hx-post="{% url 'candidate-stage-update' c.id %}"
+            hx-trigger="change"
+            hx-swap="none"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+            data-candidate-id="{{ c.id }}"
+            title="{% trans 'Move candidate to a different stage' %}">
+            {% for sg in c.recruitment_id.stage_set.all|dictsort:"sequence" %}
+                <option value="{{ sg.id }}" {% if sg == c.stage_id %}selected{% endif %}>{{ sg }}</option>
+            {% endfor %}
+        </select>
+    {% endif %}
+
+    {% if perms.recruitment.change_candidate %}
+        <button
+            type="button"
+            class="oh-btn oh-btn--secondary candidate-action-bar__btn"
+            hx-get="{% url 'send-mail' c.id %}"
+            hx-target="#objectCreateModalTarget"
+            hx-swap="innerHTML"
+            data-toggle="oh-modal-toggle"
+            data-target="#objectCreateModal"
+            onclick="$('#objectCreateModal').addClass('oh-modal--show')"
+            title="{% trans 'Send an email to this candidate' %}">
+            <ion-icon name="mail-open-outline" aria-hidden="true"></ion-icon>
+            <span>{% trans "Send Mail" %}</span>
+        </button>
+    {% endif %}
+
+    {% if "onboarding"|app_installed %}
+        {% if perms.recruitment.add_rejectedcandidate or request.user|is_stagemanager or perms.recruitment.change_candidate %}
+            <button
+                type="button"
+                class="oh-btn oh-btn--danger candidate-action-bar__btn"
+                hx-target="#rejectModalBody"
+                hx-swap="innerHTML"
+                hx-get="{% url 'add-to-rejected-candidates' %}?candidate_id={{ c.id }}"
+                data-toggle="oh-modal-toggle"
+                data-target="#rejectModal"
+                onclick="$('#rejectModal').addClass('oh-modal--show')"
+                {% if c.is_offer_rejected %}
+                    title="{% trans 'Added in rejected candidates — click to edit' %}"
+                {% else %}
+                    title="{% trans 'Reject this candidate' %}"
+                {% endif %}>
+                <ion-icon name="close-circle-outline" aria-hidden="true"></ion-icon>
+                <span>
+                    {% if c.is_offer_rejected %}
+                        {% trans "Edit Rejection" %}
+                    {% else %}
+                        {% trans "Reject" %}
+                    {% endif %}
+                </span>
+            </button>
+        {% endif %}
+    {% endif %}
+</div>
+
+<style>
+    .candidate-action-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem 0;
+    }
+    .candidate-action-bar__label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #555;
+        margin: 0 0.25rem 0 0;
+    }
+    .candidate-action-bar__label ion-icon {
+        font-size: 1.1rem;
+    }
+    .candidate-action-bar__stage-select {
+        min-width: 10rem;
+        max-width: 14rem;
+    }
+    .candidate-action-bar__btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 18px;
+        white-space: nowrap;
+    }
+    .candidate-action-bar__btn ion-icon {
+        font-size: 1.05rem;
+    }
+    @media (max-width: 576px) {
+        .candidate-action-bar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .candidate-action-bar__stage-select,
+        .candidate-action-bar__btn {
+            width: 100%;
+            max-width: none;
+        }
+    }
+</style>
