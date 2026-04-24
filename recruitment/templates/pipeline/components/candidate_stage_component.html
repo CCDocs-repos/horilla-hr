@@ -52,6 +52,9 @@
                 <div class="oh-sticky-table__th oh-table-config__th" style="width: 135px;">
                     <span> {% trans "Contact" %} </span>
                 </div>
+                <div class="oh-sticky-table__th oh-table-config__th" style="width: 135px;">
+                    <span> {% trans "Application Date" %} </span>
+                </div>
                 <div class="oh-sticky-table__th oh-table-config__th" style="width: 155px;">
                     <span> {% trans "Scheduled Interviews" %} </span>
                 </div>
@@ -167,6 +170,10 @@
                 </div>
                 <div class="oh-sticky-table__td oh-table-config__td">
                     {{cand.mobile}}
+                </div>
+
+                <div class="oh-sticky-table__td oh-table-config__td">
+                    <span title="{{cand.created_at|date:'Y-m-d H:i'}}">{{cand.get_created_at_date|date:"Y-m-d"}}</span>
                 </div>
 
                 <div class="oh-sticky-table__td oh-table-config__td">

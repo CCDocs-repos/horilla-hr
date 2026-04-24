@@ -92,6 +92,20 @@ class CandidateFilter(FilterSet):
         lookup_expr="lte",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
+    application_date = django_filters.DateFromToRangeFilter(
+        field_name="created_at",
+        widget=django_filters.widgets.RangeWidget(attrs={"type": "date"}),
+    )
+    application_date_after = django_filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="date__gte",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    application_date_before = django_filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="date__lte",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
     recruitment = django_filters.CharFilter(
         field_name="recruitment_id__title", lookup_expr="icontains"
     )
