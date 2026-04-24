@@ -7545,4 +7545,42 @@ def protected_media(request, path):
             )
             return redirect("login")
 
-    return FileResponse(open(media_path, "rb"))
+    # Infer Content-Type from extension so Chrome's PDF viewer will embed
+    # in an iframe/object. Without this, FileResponse defaults to
+    # application/octet-stream and Chrome refuses to render.
+    import mimetypes as _mimetypes
+
+    _EXT_CONTENT_TYPE = {
+        ".pdf": "application/pdf",
+        ".doc": "application/msword",
+        ".docx": (
+            "application/vnd.openxmlformats-officedocument"
+            ".wordprocessingml.document"
+        ),
+        ".xls": "application/vnd.ms-excel",
+        ".xlsx": (
+            "application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet"
+        ),
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".pptx": (
+            "application/vnd.openxmlformats-officedocument"
+            ".presentationml.presentation"
+        ),
+        ".txt": "text/plain",
+        ".csv": "text/csv",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+    }
+
+    _ext = os.path.splitext(media_path)[1].lower()
+    content_type = _EXT_CONTENT_TYPE.get(_ext)
+    if not content_type:
+        guessed, _ = _mimetypes.guess_type(media_path)
+        content_type = guessed or "application/octet-stream"
+
+    return FileResponse(open(media_path, "rb"), content_type=content_type)
