@@ -1609,6 +1609,12 @@ class EmailLog(models.Model):
     to = models.EmailField()
     status = models.CharField(max_length=6, choices=statuses)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Populated by the outbound Gmail SENT sync poller (apps/emailchecker/src/sent-poller.ts).
+    # Unique + nullable so rows written by Horilla's own send_mail() path are unaffected,
+    # while re-polled Gmail messages de-dup cleanly on the upsert.
+    gmail_message_id = models.CharField(
+        max_length=255, null=True, blank=True, unique=True, db_index=True
+    )
     objects = models.Manager()
     company_id = models.ForeignKey(
         Company, on_delete=models.CASCADE, null=True, editable=False
