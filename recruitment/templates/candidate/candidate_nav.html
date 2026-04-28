@@ -53,7 +53,7 @@ x-data="{searchShow: false}"
         name='name'
         class="oh-input oh-input__icon"
         aria-label="Search Input"
-        onkeyup="$('.filterButton')[0].click();"
+        onkeyup="candidateSearchDebounced();"
       />
     </div>
     <ul class="oh-view-types ml-2" style="margin-bottom: 0;" id="view-type">
@@ -286,6 +286,19 @@ x-data="{searchShow: false}"
 
 </section>
 <script>
+  /* Debounce the candidate search: wait 350ms after last keystroke before
+     firing the htmx filter request. Without this, every keypress queues a
+     separate XHR + section swap causing the "glistening" Emely reported
+     (ClickUp 86excewhn). */
+  var _candidateSearchTimer = null;
+  function candidateSearchDebounced() {
+    clearTimeout(_candidateSearchTimer);
+    _candidateSearchTimer = setTimeout(function () {
+      var btn = document.querySelector('.filterButton');
+      if (btn) btn.click();
+    }, 350);
+  }
+
   $(document).ready(function () {
     function candidateFilter(element) {
       var search = $("#candidate-search").val();

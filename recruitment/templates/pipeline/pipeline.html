@@ -129,25 +129,8 @@
       background-position: 800px 0
     }
   }
-
-  /* Pipeline skeleton: bounded shimmer (stops after ~16s) so long-running
-     htmx loads don't leave the page "glistening" indefinitely.
-     Reported 2026-04-24 by Emely (ClickUp 86excewhn). */
-  .animated-background {
-    animation-duration: 2s;
-    animation-fill-mode: forwards;
-    animation-iteration-count: 8;
-    animation-name: placeHolderShimmer;
-    animation-timing-function: linear;
-    background-color: #f6f7f8;
-    background: linear-gradient(to right, #eeeeee9c -58%, #e4e4e496 18%, #eeeeee61 33%);
-    background-size: 800px 64px;
-    height: 300px;
-    position: relative;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .animated-background { animation: none; }
-  }
+  /* .animated-background shimmer cap (8 iterations, prefers-reduced-motion)
+     is now in static/css/style.css — no inline override needed here. */
 </style>
 
   <div id="ohMessages"></div>

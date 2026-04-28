@@ -125,17 +125,22 @@ def candidate_search(request):
         )
         template = "candidate/group_by.html"
     else:
-        # Store the Candidates in the session
-        request.session["filtered_candidates"] = [
-            candidate.id for candidate in candidates
-        ]
+        # Store filtered candidate IDs in the session using values_list so the
+        # ORM returns only PKs without pulling full model instances into memory.
+        # Previously this was `[c.id for c in candidates]` which forced a full
+        # queryset evaluation (all columns) before pagination — one of the causes
+        # of slow candidate-list loads reported by Emely (ClickUp 86excewhn).
+        request.session["filtered_candidates"] = list(
+            candidates.values_list("id", flat=True)
+        )
 
     candidates = paginator_qry(candidates, request.GET.get("page"))
 
-    mails = list(Candidate.objects.values_list("email", flat=True))
-    # Query the User model to check if any email is present
+    # Scope the employee-email lookup to only the emails visible on the current
+    # page rather than fetching every candidate email in the database.
+    page_emails = [c.email for c in candidates]
     existing_emails = list(
-        User.objects.filter(username__in=mails).values_list("email", flat=True)
+        User.objects.filter(username__in=page_emails).values_list("email", flat=True)
     )
 
     return render(
