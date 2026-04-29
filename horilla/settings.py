@@ -258,3 +258,21 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# ---------------------------------------------------------------------------
+# Email — Gmail API via service-account Domain-Wide Delegation
+# App-password SMTP is removed; SMTP env vars (EMAIL_HOST / EMAIL_HOST_USER /
+# EMAIL_HOST_PASSWORD / EMAIL_PORT / EMAIL_USE_TLS) are no longer read here.
+# The SA key is mounted at /run/secrets/sa.json (see docker-compose.yaml).
+# Override via env: GMAIL_SA_KEY_PATH, GMAIL_IMPERSONATE_USER.
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="horilla.gmail_dwd_backend.GmailDWDBackend",
+)
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="Call Center Doctors Careers <careers@ccdocs.com>",
+)
+SERVER_EMAIL = env("SERVER_EMAIL", default="careers@ccdocs.com")
+import warnings; warnings.filterwarnings("ignore", category=FutureWarning)
