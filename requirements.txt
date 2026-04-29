@@ -45,15 +45,18 @@ googleapis-common-protos
 gunicorn
 horillasetup
 html5lib
-Jinja2
 idna
+infisicalsdk
+Jinja2
 lxml
 numpy
 oauthlib
+openai
 openpyxl
 oscrypto
 pandas
 pdfkit
+pdfplumber
 pillow
 pycparser
 pyHanko
@@ -63,6 +66,7 @@ pypdf
 pypng
 python-bidi
 python-dateutil
+python-docx
 pytz
 PyYAML
 pyzk==0.9

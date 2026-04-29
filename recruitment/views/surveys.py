@@ -349,11 +349,26 @@ def application_form(request):
         return redirect("open-recruitments")
 
     try:
+        # Defensive guard: only published AND not-closed recruitments accept applications.
+        # Closed/unpublished jobs serving stale URLs would otherwise leak the wrong
+        # screening-question set to candidates (emelys@ccdocs.com 2026-04-24, id=2 vs id=6).
         recruitment = Recruitment.objects.filter(
-            id=recruitment_id, is_published=True
-        ).first()  # Only create applications for published recruitments.
+            id=recruitment_id, is_published=True, closed=False
+        ).first()
         if not recruitment:
-            messages.error(request, _("Recruitment not found"))
+            # Hard-reject POSTs to closed/unpublished recruitments with 403.
+            if request.method == "POST":
+                from django.http import HttpResponseForbidden
+                return HttpResponseForbidden(
+                    "This position is closed and no longer accepting applications."
+                )
+            messages.error(
+                request,
+                _(
+                    "This job is no longer accepting applications — "
+                    "please pick one of our open roles below."
+                ),
+            )
             return redirect("open-recruitments")
     except (ValueError, OverflowError):
         messages.error(request, _("Invalid Recruitment ID"))

@@ -3598,3 +3598,30 @@ def employee_profile_interview_tab(request):
     ).order_by("is_today", "-interview_date", "interview_time")
 
     return render(request, "tabs/scheduled_interview.html", {"interviews": interviews})
+
+
+from django.contrib.auth.decorators import login_required as django_login_required
+
+from recruitment.ai_screening.service import screen_candidate
+
+
+@django_login_required
+@require_http_methods(["POST"])
+def rescreen_candidate_ai(request, candidate_id):
+    """Re-run AI screening for a single candidate (inline; user is waiting).
+
+    Returns an HTMX fragment replacing the AI Screening section on the
+    candidate detail page.
+
+    Uses Django's built-in login_required (not Horilla's employee-gate
+    decorator) so that staff/superuser accounts without a linked Employee
+    record can also trigger rescreens.
+    """
+    candidate = get_object_or_404(Candidate, id=candidate_id)
+    screen_candidate(candidate.id)
+    candidate.refresh_from_db()
+    return render(
+        request,
+        "candidate/ai_screening_section.html",
+        {"candidate": candidate},
+    )

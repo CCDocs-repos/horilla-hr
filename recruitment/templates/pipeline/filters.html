@@ -162,6 +162,14 @@
             <label class="oh-label">{% trans 'Department' %}</label>
             {{ candidate_filter_obj.form.job_position_id__department_id }}
           </div>
+          <div class="oh-input-group">
+            <label class="oh-label" for="id_application_date_after">{% trans 'Application Date From' %}</label>
+            <input type="date" name="application_date_after" id="id_application_date_after" class="oh-input w-100" />
+          </div>
+          <div class="oh-input-group">
+            <label class="oh-label" for="id_application_date_before">{% trans 'Application Date To' %}</label>
+            <input type="date" name="application_date_before" id="id_application_date_before" class="oh-input w-100" />
+          </div>
         </div>
       </div>
     </div>

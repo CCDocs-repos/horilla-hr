@@ -227,6 +227,22 @@
         <span class="oh-kanban__card-footer-text oh-text--light"
             >{{cand.email}}</span
         ></br>
+        {% if cand.ai_score is not None %}
+          <span class="oh-badge
+            {% if cand.ai_score <= 3 %}oh-badge--danger
+            {% elif cand.ai_score <= 6 %}oh-badge--warning
+            {% else %}oh-badge--success{% endif %}"
+            title="{% trans 'AI Screening Score' %}"
+            style="font-size: 0.75em; padding: 2px 6px; margin-right: 4px;">
+            AI {{ cand.ai_score|floatformat:"-1" }}
+          </span>
+        {% else %}
+          <span class="oh-badge oh-badge--light"
+            title="{% trans 'Not yet AI-screened' %}"
+            style="font-size: 0.75em; padding: 2px 6px; margin-right: 4px;">
+            AI —
+          </span>
+        {% endif %}
 
         <span class="oh-kanban__card-footer-text oh-text--light"
             >{{cand.job_position_id}}</span

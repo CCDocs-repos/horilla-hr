@@ -3,21 +3,40 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: horilla-server
     ports:
-      - 8000:8000
+      - 8001:8000
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgres://postgres:postgres@db:5432/horilla"
-    command: sh ./entrypoint.sh
+      GMAIL_SA_KEY_PATH: "/run/secrets/sa.json"
+      GMAIL_IMPERSONATE_USER: "careers@ccdocs.com"
+    env_file:
+      - .env
+    # Override entrypoint.sh's single-sync-worker gunicorn (which bottlenecked
+    # every request). 1 worker × 8 threads with gthread = 8 concurrent requests
+    # with SHARED memory, required because Horilla's pipeline views use an
+    # in-process LocMemCache (session_key → pipeline data); multi-worker
+    # configs cause cache-miss/HX-Refresh loops on /recruitment/pipeline/.
+    # collectstatic runs on every start so Whitenoise sees fresh assets after
+    # any host-side CSS/JS/template change.
+    command: ["sh", "-c", "python3 manage.py collectstatic --noinput && exec gunicorn horilla.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 8 --worker-class gthread --timeout 120 --access-logfile - --log-level info"]
     volumes:
       - ./horilla:/app/horilla
       - ./media:/app/media
+      - ./sidebar-custom.html:/app/templates/sidebar.html
+      - ./custom-templates/candidate/individual.html:/app/recruitment/templates/candidate/individual.html
+      - ./custom-templates/candidate/view_file.html:/app/recruitment/templates/candidate/view_file.html
+      - ./external_iframe.html:/app/templates/external_iframe.html
+      # SA key for Gmail DWD email backend (careers@ccdocs.com impersonation)
+      - /opt/workspace/ai-lab/apps/emailchecker/credentials/service-account.json:/run/secrets/sa.json:ro
     depends_on:
       db:
         condition: service_healthy
 
   db:
-    image: postgres:16-bullseye
+    image: pgvector/pgvector:pg16
+    container_name: horilla-db
     environment:
       POSTGRES_DB: horilla
       POSTGRES_USER: postgres
@@ -25,7 +44,7 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - 5432:5432
+      - 5437:5432
     restart: unless-stopped
     volumes:
       - horilla-data:/var/lib/postgresql/data

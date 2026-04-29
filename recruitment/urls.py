@@ -279,6 +279,16 @@ urlpatterns = [
         name="candidate-bulk-archive",
     ),
     path(
+        "candidate-bulk-reject",
+        recruitment.views.actions.candidate_bulk_reject,
+        name="candidate-bulk-reject",
+    ),
+    path(
+        "candidate-bulk-stage-change",
+        recruitment.views.actions.candidate_bulk_stage_change,
+        name="candidate-bulk-stage-change",
+    ),
+    path(
         "candidate-history/<int:cand_id>/",
         views.candidate_history,
         name="candidate-history",
@@ -629,6 +639,11 @@ urlpatterns = [
         name="candidate-file-upload",
     ),
     path("candidate-view-file/<int:id>", views.view_file, name="candidate-view-file"),
+    path(
+        "candidate/<int:candidate_id>/ai-rescreen/",
+        views.rescreen_candidate_ai,
+        name="candidate-ai-rescreen",
+    ),
     path(
         "candidate-document-create/<int:id>",
         views.document_create,

@@ -29,7 +29,14 @@ from recruitment.decorators import (
 )
 from recruitment.filters import StageFilter
 from recruitment.forms import StageCreationForm
-from recruitment.models import Candidate, Recruitment, Stage, StageNote
+from recruitment.models import (
+    Candidate,
+    Recruitment,
+    RejectedCandidate,
+    RejectReason,
+    Stage,
+    StageNote,
+)
 from recruitment.views.linkedin import delete_post
 from recruitment.views.paginator_qry import paginator_qry
 
@@ -316,6 +323,115 @@ def candidate_bulk_archive(request):
             ),
         )
     return JsonResponse({"message": "Success"})
+
+
+@login_required
+@permission_required(perm="recruitment.add_rejectedcandidate")
+@require_http_methods(["POST"])
+def candidate_bulk_reject(request):
+    """
+    Bulk-reject candidates by writing a RejectedCandidate row for each
+    selected candidate. Reason text + optional reject_reason_id list shared
+    across all selected candidates.
+
+    POST: ids (JSON list of candidate ids), description, reason_ids (JSON list)
+    Returns: JSON with created/skipped counts + list of newly created rejection
+    ids so the UI can offer an undo toast that deletes them.
+    """
+    try:
+        ids = json.loads(request.POST.get("ids", "[]"))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"message": "Invalid ids payload", "created": 0, "skipped": 0}, status=400
+        )
+    description = (request.POST.get("description") or "").strip()[:255]
+    if not description:
+        description = "Bulk reject"
+    try:
+        reason_ids = json.loads(request.POST.get("reason_ids") or "[]")
+    except (TypeError, ValueError):
+        reason_ids = []
+    created = []
+    skipped = 0
+    for cand_id in ids:
+        try:
+            candidate_obj = Candidate.objects.get(id=cand_id)
+        except Candidate.DoesNotExist:
+            skipped += 1
+            continue
+        if RejectedCandidate.objects.filter(candidate_id=candidate_obj).exists():
+            skipped += 1
+            continue
+        rejection = RejectedCandidate.objects.create(
+            candidate_id=candidate_obj, description=description
+        )
+        if reason_ids:
+            reasons = RejectReason.objects.filter(id__in=reason_ids)
+            if reasons.exists():
+                rejection.reject_reason_id.set(reasons)
+        messages.success(
+            request,
+            _("{candidate} rejected.").format(candidate=candidate_obj),
+        )
+        created.append({"rejection_id": rejection.id, "candidate_id": candidate_obj.id})
+    return JsonResponse(
+        {
+            "message": "Success",
+            "created": len(created),
+            "skipped": skipped,
+            "rejections": created,
+        }
+    )
+
+
+@login_required
+@permission_required(perm="recruitment.change_candidate")
+@require_http_methods(["POST"])
+def candidate_bulk_stage_change(request):
+    """
+    Bulk change stage for candidates. Stage must belong to each candidate's
+    recruitment; mismatched rows are skipped (not erroring the whole batch).
+    POST: ids (JSON list of candidate ids), stage_id
+    """
+    try:
+        ids = json.loads(request.POST.get("ids", "[]"))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"message": "Invalid ids payload", "updated": 0, "skipped": 0}, status=400
+        )
+    stage_id = request.POST.get("stage_id")
+    if not stage_id:
+        return JsonResponse(
+            {"message": "stage_id required", "updated": 0, "skipped": 0}, status=400
+        )
+    updated = 0
+    skipped = 0
+    for cand_id in ids:
+        try:
+            candidate_obj = Candidate.objects.get(id=cand_id)
+        except Candidate.DoesNotExist:
+            skipped += 1
+            continue
+        stage_obj = Stage.objects.filter(
+            id=stage_id, recruitment_id=candidate_obj.recruitment_id
+        ).first()
+        if stage_obj is None:
+            skipped += 1
+            continue
+        candidate_obj.stage_id = stage_obj
+        if stage_obj.stage_type == "hired":
+            candidate_obj.hired = True
+        candidate_obj.save()
+        updated += 1
+        messages.success(
+            request,
+            _("{candidate} moved to {stage}.").format(
+                candidate=candidate_obj, stage=stage_obj.stage
+            ),
+        )
+    return JsonResponse(
+        {"message": "Success", "updated": updated, "skipped": skipped}
+    )
 
 
 @login_required

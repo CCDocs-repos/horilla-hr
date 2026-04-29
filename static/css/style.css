@@ -457,10 +457,15 @@ form label {
 }
 
 
+/* Skeleton shimmer: capped at 8 iterations (~16s max) so a slow htmx load
+   doesn't leave the page "glistening" indefinitely.
+   Bug reported 2026-04-24 by Emely (ClickUp 86excewhn).
+   Previously the pipeline.html had its own inline override; this fixes the
+   root cause in the global stylesheet so all pages benefit. */
 .animated-background {
     animation-duration: 2s;
     animation-fill-mode: forwards;
-    animation-iteration-count: infinite;
+    animation-iteration-count: 8;
     animation-name: placeHolderShimmer;
     animation-timing-function: linear;
     background-color: #f6f7f8;
@@ -468,6 +473,9 @@ form label {
     background-size: 800px 64px;
     height: 300px;
     position: relative;
+}
+@media (prefers-reduced-motion: reduce) {
+    .animated-background { animation: none; }
 }
 
 
