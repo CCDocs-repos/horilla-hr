@@ -861,8 +861,11 @@ class RecruitmentSurveyAnswer(HorillaModel):
         """
         Used to convert the json to dict
         """
-        # Convert the JSON data to a dictionary
+        # Convert the JSON data to a dictionary. JSONField answers written by
+        # the ccdocs ingest arrive as dicts already; legacy rows are strings.
         try:
+            if isinstance(self.answer_json, dict):
+                return self.answer_json
             return json.loads(self.answer_json)
         except json.JSONDecodeError:
             return {}  # Return an empty dictionary if JSON is invalid or empty

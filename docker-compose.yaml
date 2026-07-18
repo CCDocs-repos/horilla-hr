@@ -35,6 +35,7 @@ services:
       - ./media:/app/media
       - ./sidebar-custom.html:/app/templates/sidebar.html
       - ./custom-templates/candidate/individual.html:/app/recruitment/templates/candidate/individual.html
+      - ./custom-templates/candidate/_candidate_action_bar.html:/app/recruitment/templates/candidate/_candidate_action_bar.html
       - ./custom-templates/candidate/view_file.html:/app/recruitment/templates/candidate/view_file.html
       - ./external_iframe.html:/app/templates/external_iframe.html
       # SA key for Gmail DWD email backend (careers@ccdocs.com impersonation)
