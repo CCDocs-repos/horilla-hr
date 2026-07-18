@@ -7,8 +7,15 @@ services:
     ports:
       - 8001:8000
     restart: unless-stopped
+    # secrets.ccdocs.com publicly resolves to 127.0.0.1 (host-local Infisical
+    # behind Caddy) -- inside the container that dials the container itself and
+    # the Infisical boot silently loses every secret (incl. HORILLA_INGEST_TOKEN,
+    # which made /ccdocs/ingest/candidate/ 503 on every real applicant).
+    # host-gateway points the name back at the host's Caddy.
+    extra_hosts:
+      - "secrets.ccdocs.com:host-gateway"
     environment:
-      DATABASE_URL: "postgres://postgres:postgres@db:5432/horilla"
+      DATABASE_URL: "postgres://postgres:d0259bf3e39e0166229751bad736a8a772a36ac0@db:5432/horilla"
       GMAIL_SA_KEY_PATH: "/run/secrets/sa.json"
       GMAIL_IMPERSONATE_USER: "careers@ccdocs.com"
     env_file:
@@ -23,6 +30,8 @@ services:
     command: ["sh", "-c", "python3 manage.py collectstatic --noinput && exec gunicorn horilla.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 8 --worker-class gthread --timeout 120 --access-logfile - --log-level info"]
     volumes:
       - ./horilla:/app/horilla
+      - ./ccdocs_automation:/app/ccdocs_automation
+      - ./app.env:/app/.env:ro
       - ./media:/app/media
       - ./sidebar-custom.html:/app/templates/sidebar.html
       - ./custom-templates/candidate/individual.html:/app/recruitment/templates/candidate/individual.html
@@ -37,14 +46,15 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: horilla-db
+    shm_size: '1g'  # HNSW index rebuild during DR needs >64MB shm (B2 verify, PR #518)
     environment:
       POSTGRES_DB: horilla
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: d0259bf3e39e0166229751bad736a8a772a36ac0
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - 5437:5432
+      - "127.0.0.1:5437:5432"
     restart: unless-stopped
     volumes:
       - horilla-data:/var/lib/postgresql/data
