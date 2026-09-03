@@ -404,8 +404,17 @@ class Candidate(HorillaModel):
         blank=True, null=True, verbose_name=_("Schedule date")
     )
     email = models.EmailField(max_length=254, verbose_name=_("Email"))
+    # CCDocs: widened 15 -> 25. E.164 permits 15 DIGITS, so a bare
+    # international number already needs 16 characters once the leading "+" is
+    # counted, and a normally formatted one ("+52 55 1234 5678") needs 16-20.
+    # At 15 a Mexican mobile could not be stored at all: the insert raised
+    # StringDataRightTruncation, the ingest endpoint answered 500, and the
+    # applicant was shown a submit failure. 25 is the width the rest of the
+    # stack already assumes -- the public forms send maxlength="25", the
+    # candidate-inbox intake bounds at 25, ccdocs_automation/ingest.py bounds
+    # at 25, and employee_employee.phone in this same database is varchar(25).
     mobile = models.CharField(
-        max_length=15,
+        max_length=25,
         blank=True,
         validators=[
             validate_mobile,
@@ -861,8 +870,11 @@ class RecruitmentSurveyAnswer(HorillaModel):
         """
         Used to convert the json to dict
         """
-        # Convert the JSON data to a dictionary
+        # Convert the JSON data to a dictionary. JSONField answers written by
+        # the ccdocs ingest arrive as dicts already; legacy rows are strings.
         try:
+            if isinstance(self.answer_json, dict):
+                return self.answer_json
             return json.loads(self.answer_json)
         except json.JSONDecodeError:
             return {}  # Return an empty dictionary if JSON is invalid or empty

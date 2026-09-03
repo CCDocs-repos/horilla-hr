@@ -1,6 +1,7 @@
 import logging
 import threading
 
+from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 
@@ -27,8 +28,8 @@ def trigger_ai_screening(sender, instance, created, **kwargs):
     """
     if not created:
         return
-    if not instance.resume:
-        return
+    # No-resume candidates (website applicants) are screened too -- the
+    # service falls back to application text + screening answers (2026-07-18).
     candidate_id = instance.id
 
     def _run():
@@ -38,7 +39,13 @@ def trigger_ai_screening(sender, instance, created, **kwargs):
             _ai_logger.exception("AI screening thread failed for candidate=%s", candidate_id)
 
     try:
-        threading.Thread(target=_run, daemon=True).start()
+        # Spawn only after the creating transaction commits -- a thread started
+        # inside the ingest view's transaction races it and finds no candidate
+        # (seen live 2026-07-18: "no candidate with id=838"). on_commit runs
+        # immediately when there is no active transaction.
+        transaction.on_commit(
+            lambda: threading.Thread(target=_run, daemon=True).start()
+        )
     except Exception:
         _ai_logger.exception("Failed to spawn AI screening thread for candidate=%s", candidate_id)
 
