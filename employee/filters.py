@@ -5,6 +5,8 @@ This page is used to register filter for employee models
 
 """
 
+import re
+
 import django
 import django_filters
 from django import forms
@@ -204,16 +206,34 @@ class EmployeeFilter(HorillaFilterSet):
 
     def filter_by_name(self, queryset, name, value):
         """
-        Employee search method
+        Employee search method -- matches name, email (personal + work), or
+        phone, so the one search box works the way most people expect
+        without first picking a field from the "Search <Field> for:" menu.
+
+        Phone is compared digits-only so "528-136-5138", "5281365138" and
+        "+528136513857" all find the same person regardless of how either
+        side happens to be formatted -- real data here is a genuine mix of
+        those three shapes.
         """
         value = value.lower()
 
         if self.data.get("search_field"):
             return queryset
 
+        digits_only = re.sub(r"\D", "", value)
+
         def _icontains(instance):
-            result = str(getattribute(instance, "get_full_name")).lower()
-            return instance.pk if value in result else None
+            name_match = value in str(getattribute(instance, "get_full_name")).lower()
+            email_match = value in str(instance.email or "").lower()
+            work_info = getattr(instance, "employee_work_info", None)
+            work_email_match = bool(work_info) and value in str(
+                work_info.email or ""
+            ).lower()
+            phone_match = bool(digits_only) and digits_only in re.sub(
+                r"\D", "", instance.phone or ""
+            )
+            matched = name_match or email_match or work_email_match or phone_match
+            return instance.pk if matched else None
 
         ids = list(filter(None, map(_icontains, queryset)))
         return queryset.filter(id__in=ids)

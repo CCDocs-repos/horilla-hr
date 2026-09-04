@@ -107,6 +107,13 @@
                             </li>
                             <li>
                                 <a href="#"
+                                    onclick="$('[name=search_field]').val('email'); $('.filterButton')[0].click()">
+                                    {% trans "Search" %} <b>{% trans "Email" %}</b> {% trans "for:" %}
+                                    <b class="search_text"></b>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="#"
                                     onclick="$('[name=search_field]').val('department'); $('.filterButton')[0].click()">
                                     {% trans "Search" %} <b>{% trans "Department" %}</b> {% trans "for:" %}
                                     <b class="search_text"></b>
