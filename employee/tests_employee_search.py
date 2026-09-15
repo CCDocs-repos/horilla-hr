@@ -141,7 +141,7 @@ class EmployeeSearchTests(TestCase):
 
     # -- the marker beside each name ---------------------------------------
 
-    def test_marker_is_green_for_active_and_red_inactive_for_inactive(self):
+    def test_marker_is_green_active_for_active_and_red_inactive_for_inactive(self):
         active = render_to_string(
             "employee_personal_info/active_marker.html", {"emp": self.ann}
         )
@@ -149,6 +149,7 @@ class EmployeeSearchTests(TestCase):
             "employee_personal_info/active_marker.html", {"emp": self.bob}
         )
         self.assertIn("oh-dot--success", active)
+        self.assertIn(">Active<", active)
         self.assertNotIn("Inactive", active)
         self.assertIn("oh-dot--danger", inactive)
         self.assertIn("Inactive", inactive)
