@@ -1090,7 +1090,9 @@ def employee_view(request):
 
     queryset = Employee.objects.filter()
     filter_obj = EmployeeFilter(request.GET, queryset=queryset).qs
-    if request.GET.get("is_active") != "False":
+    # No "Is Active" choice + nothing typed -> active only. A typed search
+    # looks at everyone, so an inactive person can still be found by name.
+    if not request.GET.get("is_active") and not request.GET.get("search"):
         filter_obj = filter_obj.filter(is_active=True)
 
     update_fields = BulkUpdateFieldForm()
@@ -1816,7 +1818,9 @@ def employee_filter_view(request):
     queryset = Employee.objects.filter()
     selected_company = request.session.get("selected_company")
     employees = EmployeeFilter(request.GET, queryset=queryset).qs
-    if request.GET.get("is_active") != "False":
+    # No "Is Active" choice + nothing typed -> active only. A typed search
+    # looks at everyone, so an inactive person can still be found by name.
+    if not request.GET.get("is_active") and not request.GET.get("search"):
         employees = employees.filter(is_active=True)
     if (
         request.GET.get("employee_work_info__company_id") == None
