@@ -111,16 +111,33 @@ class BankInformationCardTests(TestCase):
         self.assertIn("USD", page)
         self.assertNotIn("Account Name", page)
 
-    def test_wise_by_bank_name_alone_says_so(self):
-        """One person is marked Wise only by their bank name, with nothing saved."""
-        emp = self.make_employee("Fran", "NameOnly", "fran@example.com")
+    def test_a_wise_issued_bank_account_keeps_its_bank_fields(self):
+        """A bank named "Wise" is NOT an email payout: Wise issues real accounts
+        (Divyansh Kumar holds one). Only payout_rail decides, or we would hide the
+        account number, SWIFT and routing of someone who must be wired money."""
+        emp = self.make_employee("Div", "WiseBank", "div@example.com")
         EmployeeBankDetails.objects.create(
-            employee_id=emp, bank_name="WISE ", account_number="NA", additional_info={}
+            employee_id=emp,
+            bank_name="Wise",
+            account_number="206545725380306",
+            any_other_code1="TRWIBEB1XXX",
+            additional_info={"payout_rail": "bank", "currency": "USD"},
         )
         page = self.card(emp)
-        self.assertIn("No Wise details saved yet", page)
-        self.assertNotIn("Account Number", page)
-        self.assertNotIn("NA", page)
+        self.assertIn("206545725380306", page)
+        self.assertIn("TRWIBEB1XXX", page)
+        self.assertNotIn("Wise Email", page)
+
+    def test_the_template_has_no_multiline_hash_comment(self):
+        """A {# #} comment is single-line only; a multi-line one renders its 2nd
+        line onward as visible text on the profile page, which is exactly what
+        happened on 2026-09-17."""
+        from pathlib import Path as _Path
+
+        tpl = _Path(__file__).parent / "templates" / "tabs" / "personal_tab.html"
+        for n, line in enumerate(tpl.read_text().splitlines(), 1):
+            if "{#" in line:
+                self.assertIn("#}", line, f"{tpl.name}:{n}: {{# comment never closes on its line")
 
     # -- paid into a bank account -------------------------------------------
 
