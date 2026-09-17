@@ -420,6 +420,15 @@
 										<span class="oh-profile__info-value">{{bank.country}}</span>
 									</li>
 								{% endif %}
+								{% if currency %}
+									<li class="oh-profile__card-info-item">
+										<span class="oh-profile__info-label mb-1">
+											<ion-icon name="cash-outline"></ion-icon>
+											<span>{% trans "Currency" %}</span>
+										</span>
+										<span class="oh-profile__info-value">{{currency}}</span>
+									</li>
+								{% endif %}
 							</ul>
 						</div>
 						{% endif %}

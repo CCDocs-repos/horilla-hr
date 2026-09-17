@@ -146,3 +146,21 @@ class BankInformationCardTests(TestCase):
         self.assertNotIn("Branch", page)
         self.assertNotIn("Bank Code #2", page)
         self.assertIn("Bank Code #1", page)
+        self.assertEqual(page.count("<span>Currency</span>"), 0)
+
+    def test_bank_person_with_a_saved_currency_sees_it(self):
+        """The onboarding form saves a currency for bank people too."""
+        emp = self.make_employee("Mia", "Peso", "mia@example.com")
+        EmployeeBankDetails.objects.create(
+            employee_id=emp,
+            bank_name="BBVA",
+            account_number="012345678901234567",
+            additional_info={"payout_rail": "bank", "currency": "MXN"},
+        )
+        page = self.card(emp)
+        self.assertIn("BBVA", page)
+        # exactly one Currency row, and it sits inside the bank card
+        self.assertEqual(page.count("<span>Currency</span>"), 1)
+        self.assertGreater(page.index("<span>Currency</span>"), page.index("Bank Information"))
+        self.assertIn("MXN", page)
+        self.assertNotIn("Wise Email", page)
