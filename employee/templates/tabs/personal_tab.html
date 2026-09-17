@@ -302,7 +302,8 @@
 		{% if perms.employee.view_employeebankdetails or request.user == employee.employee_user_id %}
 			{% with bank=employee.employee_bank_details %}
 			{% with info=bank.additional_info %}
-			{% with currency=info.wise_currency|default:info.currency %}
+			{# firstof, not |default: -- a missing additional_info key raises inside a filter argument #}
+			{% firstof info.wise_currency info.currency as currency %}
 				<div class="oh-card oh-card--margin">
 					<div class="oh-card__header">
 						<span class="oh-card__title oh-card__title--sm fw-bold me-2">{% trans "Bank Information" %}</span>
@@ -425,7 +426,6 @@
 						</div>
 					</div>
 				</div>
-			{% endwith %}
 			{% endwith %}
 			{% endwith %}
 		{% endif %}
