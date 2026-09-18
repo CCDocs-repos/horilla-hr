@@ -2113,6 +2113,17 @@ def employee_archive(request, obj_id):
     employee.employee_user_id.is_active = employee.is_active
     save = True
     message = "Employee un-archived"
+    # The profile page has no employee list to re-filter, so it asks htmx to
+    # reload the page instead; that also shows the flash message and new marker.
+    from_profile = request.GET.get("from_profile") == "1"
+
+    def done():
+        if from_profile:
+            response = HttpResponse("")
+            response["HX-Refresh"] = "true"
+            return response
+        return HttpResponse("<script>$('#filterEmployee').click();</script>")
+
     if not employee.is_active:
 
         emp = Employee.objects.get(id=obj_id)
@@ -2124,7 +2135,7 @@ def employee_archive(request, obj_id):
                     count = count + 1
             if count == 1:
                 messages.error(request, _("You can't archive the last superuser."))
-                return HttpResponse("<script>$('#filterEmployee').click();</script>")
+                return done()
 
         result = employee.get_archive_condition()
         if result:
@@ -2141,7 +2152,7 @@ def employee_archive(request, obj_id):
         if key not in request.META.keys():
             return HorillaRedirect(request)
         else:
-            return HttpResponse("<script>$('#filterEmployee').click();</script>")
+            return done()
     else:
         return render(
             request,
