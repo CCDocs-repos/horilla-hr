@@ -1090,7 +1090,9 @@ def employee_view(request):
 
     queryset = Employee.objects.filter()
     filter_obj = EmployeeFilter(request.GET, queryset=queryset).qs
-    if request.GET.get("is_active") != "False":
+    # No "Is Active" choice + nothing typed -> active only. A typed search
+    # looks at everyone, so an inactive person can still be found by name.
+    if not request.GET.get("is_active") and not request.GET.get("search"):
         filter_obj = filter_obj.filter(is_active=True)
 
     update_fields = BulkUpdateFieldForm()
@@ -1816,7 +1818,9 @@ def employee_filter_view(request):
     queryset = Employee.objects.filter()
     selected_company = request.session.get("selected_company")
     employees = EmployeeFilter(request.GET, queryset=queryset).qs
-    if request.GET.get("is_active") != "False":
+    # No "Is Active" choice + nothing typed -> active only. A typed search
+    # looks at everyone, so an inactive person can still be found by name.
+    if not request.GET.get("is_active") and not request.GET.get("search"):
         employees = employees.filter(is_active=True)
     if (
         request.GET.get("employee_work_info__company_id") == None
@@ -2079,6 +2083,10 @@ def employee_bulk_archive(request):
         employee.employee_user_id.is_active = is_active
         if employee.get_archive_condition() is False:
             employee.save()
+            # Employee.save() does not cascade-save the related auth_user, so
+            # the is_active flip above is silently lost unless saved here too --
+            # otherwise an "archived" employee keeps a live login.
+            employee.employee_user_id.save()
             message = _("archived")
             if is_active:
                 message = _("un-archived")
@@ -2099,9 +2107,23 @@ def employee_archive(request, obj_id):
     """
     employee = Employee.objects.get(id=obj_id)
     employee.is_active = not employee.is_active
-    employee.employee_user_id.is_active = not employee.is_active
+    # Mirror the NEW value, not another `not` of it -- doing `not employee.is_active`
+    # here re-negates the already-flipped value and sets the login to the opposite
+    # of what the employee record just became.
+    employee.employee_user_id.is_active = employee.is_active
     save = True
     message = "Employee un-archived"
+    # The profile page has no employee list to re-filter, so it asks htmx to
+    # reload the page instead; that also shows the flash message and new marker.
+    from_profile = request.GET.get("from_profile") == "1"
+
+    def done():
+        if from_profile:
+            response = HttpResponse("")
+            response["HX-Refresh"] = "true"
+            return response
+        return HttpResponse("<script>$('#filterEmployee').click();</script>")
+
     if not employee.is_active:
 
         emp = Employee.objects.get(id=obj_id)
@@ -2113,7 +2135,7 @@ def employee_archive(request, obj_id):
                     count = count + 1
             if count == 1:
                 messages.error(request, _("You can't archive the last superuser."))
-                return HttpResponse("<script>$('#filterEmployee').click();</script>")
+                return done()
 
         result = employee.get_archive_condition()
         if result:
@@ -2122,12 +2144,15 @@ def employee_archive(request, obj_id):
             message = _("Employee archived")
     if save:
         employee.save()
+        # Same cascade-save gap as employee_bulk_archive: without this, the
+        # login stays active after "archiving" the employee.
+        employee.employee_user_id.save()
         messages.success(request, message)
         key = "HTTP_HX_REQUEST"
         if key not in request.META.keys():
             return HorillaRedirect(request)
         else:
-            return HttpResponse("<script>$('#filterEmployee').click();</script>")
+            return done()
     else:
         return render(
             request,

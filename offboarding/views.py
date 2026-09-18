@@ -429,6 +429,13 @@ def change_stage(request):
         id__in=employee_ids,
         is_active=not target_state,  # Only update if is_active differs
     ).update(is_active=target_state)
+    # The Employee flip above never touched the linked login (auth_user) --
+    # moving someone to the Archived stage hid them from lists but left them
+    # able to sign in. Mirror the login state too, same as employee_terminate_view.py,
+    # and never touch a superuser's login here.
+    User.objects.filter(employee_get__id__in=employee_ids).exclude(
+        is_superuser=True
+    ).update(is_active=target_state)
 
     stage_forms = {}
     stage_forms[str(stage.offboarding_id.id)] = StageSelectForm(

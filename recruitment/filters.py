@@ -9,6 +9,8 @@ import uuid
 
 import django_filters
 from django import forms
+from django.db.models import F, Value
+from django.db.models.functions import Replace
 from django.utils.translation import gettext_lazy as _
 
 from base.filters import FilterSet
@@ -26,6 +28,54 @@ from recruitment.models import (
 
 # from django.forms.widgets import Boo
 
+# Candidate.mobile is free text, so the same phone number is stored a dozen
+# different ways -- "8763694589", "+18765910952", "876 742-0692", "(702)
+# 283-1108". Typing the digits therefore misses roughly one number in ten, and
+# a number written with its country code misses one without. Both sides are
+# reduced to bare digits and compared as a substring instead, which also makes
+# "+1876..." findable by the last ten digits. These five characters are the only
+# non-digits the column holds; Replace is used rather than a regular expression
+# so the same query still runs on the SQLite test database.
+MOBILE_SEPARATORS = ("+", "-", " ", "(", ")")
+
+# Below three digits nearly every candidate matches, which would drown a name
+# search that merely happens to contain a number.
+MIN_MOBILE_SEARCH_DIGITS = 3
+
+
+def mobile_digits(prefix=""):
+    """Return the candidate's mobile as an expression with separators removed."""
+    expression = F(f"{prefix}mobile")
+    for separator in MOBILE_SEPARATORS:
+        expression = Replace(expression, Value(separator), Value(""))
+    return expression
+
+
+def search_name_email_or_mobile(queryset, value, prefix=""):
+    """
+    Match a candidate on their name, email address or phone number.
+
+    Recruiters search with whatever the candidate gave them -- a name, an email
+    pasted out of a CV, or a phone number with or without its country code and
+    punctuation -- so one search box has to accept all three. `prefix` walks the
+    relation to the candidate when the queryset is not of candidates itself.
+    """
+    queryset = queryset.annotate(candidate_mobile_digits=mobile_digits(prefix))
+    matches = queryset.filter(
+        **{f"{prefix}name__icontains": value}
+    ) | queryset.filter(**{f"{prefix}email__icontains": value})
+
+    digits = "".join(character for character in value if character.isdigit())
+    if len(digits) >= MIN_MOBILE_SEARCH_DIGITS:
+        matches = matches | queryset.filter(candidate_mobile_digits__contains=digits)
+        # A number pasted as "+1 876 555 0000" carries a country code the stored
+        # value may not have, so try it without a North American 1 as well.
+        if len(digits) == 11 and digits.startswith("1"):
+            matches = matches | queryset.filter(
+                candidate_mobile_digits__contains=digits[1:]
+            )
+    return matches
+
 
 class CandidateFilter(FilterSet):
     """
@@ -35,7 +85,7 @@ class CandidateFilter(FilterSet):
         FilterSet (class): custom filter set class to apply styling
     """
 
-    name = django_filters.CharFilter(field_name="name", lookup_expr="icontains")
+    name = django_filters.CharFilter(method="search_method")
     start_onboard = django_filters.CharFilter(
         method="start_onboard_method", lookup_expr="icontains"
     )
@@ -48,6 +98,11 @@ class CandidateFilter(FilterSet):
     candidate_name = django_filters.CharFilter(
         method="pipeline_search", lookup_expr="icontains"
     )
+    # Declared so they override the exact-match filters django-filter would
+    # otherwise generate from Meta.fields -- a partial email or the last four
+    # digits of a phone number used to return nothing.
+    email = django_filters.CharFilter(field_name="email", lookup_expr="icontains")
+    mobile = django_filters.CharFilter(method="mobile_method")
     start_date = django_filters.DateFilter(
         field_name="recruitment_id__start_date",
         widget=forms.DateInput(attrs={"type": "date"}),
@@ -121,12 +176,29 @@ class CandidateFilter(FilterSet):
         widget=django_filters.widgets.BooleanWidget(),
     )
 
+    def search_method(self, queryset, _, value):
+        """
+        This method is used to search a candidate by name, email or phone number
+        """
+        return search_name_email_or_mobile(queryset, value).distinct()
+
+    def mobile_method(self, queryset, _, value):
+        """
+        This method is used to match a phone number however it was punctuated
+        """
+        digits = "".join(character for character in value if character.isdigit())
+        if not digits:
+            return queryset.none()
+        return queryset.annotate(candidate_mobile_digits=mobile_digits()).filter(
+            candidate_mobile_digits__contains=digits
+        )
+
     def pipeline_search(self, queryset, _, value):
         """
         This method is used to include the candidates when they in the recruitment/stages
         """
         queryset = (
-            queryset.filter(name__icontains=value)
+            search_name_email_or_mobile(queryset, value)
             | queryset.filter(stage_id__stage__icontains=value)
             | queryset.filter(stage_id__recruitment_id__title__icontains=value)
         ).distinct()
@@ -637,7 +709,7 @@ class SkillZoneCandFilter(FilterSet):
         This method to include candidate when search skill zone
         """
         return (
-            queryset.filter(candidate_id__name__icontains=value)
+            search_name_email_or_mobile(queryset, value, prefix="candidate_id__")
             | queryset.filter(skill_zone_id__title__icontains=value)
         ).distinct()
 
@@ -650,9 +722,7 @@ class InterviewFilter(FilterSet):
         FilterSet (class): custom filter set class to apply styling
     """
 
-    search = django_filters.CharFilter(
-        field_name="candidate_id__name", lookup_expr="icontains"
-    )
+    search = django_filters.CharFilter(method="search_method")
 
     scheduled_from = django_filters.DateFilter(
         field_name="interview_date",
@@ -676,6 +746,14 @@ class InterviewFilter(FilterSet):
             "employee_id",
             "interview_date",
         ]
+
+    def search_method(self, queryset, _, value):
+        """
+        This method is used to search the interviewee by name, email or phone
+        """
+        return search_name_email_or_mobile(
+            queryset, value, prefix="candidate_id__"
+        ).distinct()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -45,6 +45,12 @@
     if (field == "field") {
       return $(`option[value="${value}"]`).html();
     }
+    if (field == "search_field") {
+      // Show the "Search <Field> for:" menu's own wording ("Work Type"), not the
+      // lookup path it sends ("employee_work_info__work_type_id").
+      let label = $(`a[onclick*="val('${value}')"]`).first().find("b").first().text();
+      return label || value;
+    }
     return value;
   }
   $(document).ready(function () {
