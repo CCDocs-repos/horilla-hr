@@ -139,6 +139,15 @@ class BankInformationCardTests(TestCase):
             if "{#" in line:
                 self.assertIn("#}", line, f"{tpl.name}:{n}: {{# comment never closes on its line")
 
+    def test_about_tab_loads_for_a_person_with_no_gender(self):
+        """{% trans employee.get_gender_display %} raised on a NULL gender and the
+        whole About tab answered 500 -- Erick Daniel Aguilar Carbajal and Paola
+        Palacios on 2026-09-18. Records created by scripts have no gender."""
+        emp = self.make_employee("Gen", "Less", "gen@example.com")
+        Employee.objects.filter(pk=emp.pk).update(gender=None)
+        page = self.card(emp)
+        self.assertIn("Gender", page)
+
     # -- paid into a bank account -------------------------------------------
 
     def test_bank_person_shows_bank_details_and_hides_blanks(self):
