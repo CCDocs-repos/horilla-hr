@@ -9,7 +9,9 @@ import os
 from datetime import date, time
 from unittest import mock
 
-from django.contrib.auth.models import Group
+from django.conf import settings
+from django.contrib.auth import login
+from django.contrib.auth.models import Group, User
 from django.core import mail
 from django.core.cache import cache
 from django.db import connection
@@ -25,6 +27,7 @@ from base.models import (
 )
 from employee.models import Employee, EmployeeWorkInformation
 from horilla.ccdocs_attendance import common
+from horilla.ccdocs_attendance.middleware import trust_header_key
 from horilla.horilla_middlewares import _thread_locals
 
 API_TOKEN = "test-api-token-0123456789abcdef"
@@ -33,6 +36,53 @@ LINK_TOKEN = "test-link-token-fedcba9876543210"
 
 def _refuse_to_send(*_args, **_kwargs):
     raise AssertionError("ccdocs_attendance tried to send an email")
+
+
+class StandInGate:
+    """
+    Used only where base.middleware has no GsuiteGateAuthMiddleware (the CCDocs
+    gate is hand-copied into the deployed code, not this repo). Same rule as
+    that gate: sign in the active user whose @ccdocs.com email the header names.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if not request.user.is_authenticated:
+            email = (request.META.get(trust_header_key()) or "").strip().lower()
+            if email.endswith("@ccdocs.com"):
+                user = (
+                    User.objects.filter(email__iexact=email, is_active=True)
+                    .order_by("-is_superuser", "-is_staff", "id")
+                    .first()
+                )
+                if user:
+                    user.backend = "django.contrib.auth.backends.ModelBackend"
+                    login(request, user)
+        return self.get_response(request)
+
+
+def production_middleware():
+    """
+    MIDDLEWARE as production runs it. The test settings take the Google-gate
+    login out; this puts it back where horilla_middlewares.py puts it (before
+    ForcePasswordChangeMiddleware), so a test can see what a forged
+    X-Auth-Request-Email header would really do.
+    """
+    try:
+        from base.middleware import GsuiteGateAuthMiddleware  # noqa: F401
+
+        gate = "base.middleware.GsuiteGateAuthMiddleware"
+    except ImportError:
+        gate = "horilla.ccdocs_attendance.tests.base.StandInGate"
+    middleware = [
+        m for m in settings.MIDDLEWARE if not m.endswith("GsuiteGateAuthMiddleware")
+    ]
+    anchor = "base.middleware.ForcePasswordChangeMiddleware"
+    at = middleware.index(anchor) if anchor in middleware else len(middleware)
+    middleware.insert(at, gate)
+    return middleware
 
 
 class AttendanceTestCase(TestCase):

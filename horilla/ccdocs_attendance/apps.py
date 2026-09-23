@@ -1,4 +1,35 @@
 from django.apps import AppConfig
+from django.core import checks
+
+
+def public_path_guard_check(app_configs=None, **kwargs):
+    """
+    Refuse to start (manage.py check / migrate / test fail) unless the public
+    path guard is in MIDDLEWARE and runs before the Google-gate login.
+    """
+    from django.conf import settings
+
+    from horilla.ccdocs_attendance.middleware import DOTTED_PATH, GATE_NAME
+
+    middleware = list(settings.MIDDLEWARE)
+    if DOTTED_PATH not in middleware:
+        return [
+            checks.Error(
+                f"{DOTTED_PATH} is not in MIDDLEWARE.",
+                hint="Add the insert(0, ...) line next to the ccdocs_attendance "
+                "INSTALLED_APPS line in horilla/horilla_apps.py.",
+                id="ccdocs_attendance.E001",
+            )
+        ]
+    gates = [i for i, name in enumerate(middleware) if name.endswith(GATE_NAME)]
+    if gates and middleware.index(DOTTED_PATH) > min(gates):
+        return [
+            checks.Error(
+                f"{DOTTED_PATH} must come before {GATE_NAME} in MIDDLEWARE.",
+                id="ccdocs_attendance.E002",
+            )
+        ]
+    return []
 
 
 class CcdocsAttendanceConfig(AppConfig):
@@ -23,4 +54,5 @@ class CcdocsAttendanceConfig(AppConfig):
         urlpatterns.append(
             path("ccdocs-attendance/", include("horilla.ccdocs_attendance.urls")),
         )
+        checks.register(public_path_guard_check, checks.Tags.security)
         super().ready()

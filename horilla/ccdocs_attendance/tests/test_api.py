@@ -22,6 +22,7 @@ from horilla.ccdocs_attendance.tests.base import (
     API_TOKEN,
     LINK_TOKEN,
     AttendanceTestCase,
+    production_middleware,
 )
 
 API = "/ccdocs-attendance/api/v1/"
@@ -83,14 +84,24 @@ class AuthTests(ApiTestCase):
 
     def test_the_session_and_identity_headers_do_not_count(self):
         from django.contrib.auth.models import User
+        from django.test import Client
 
         boss = User.objects.create_superuser(
-            "boss", "boss@example.com", "not-used-pw-123"
+            "boss", "boss@ccdocs.com", "not-used-pw-123"
         )
-        self.client.force_login(boss)
-        response = self.client.get(
-            API + "day/", {"date": "2026-09-25"}, HTTP_X_AUTH_REQUEST_EMAIL=boss.email
-        )
+        signed_in = Client()
+        signed_in.force_login(boss)
+        response = signed_in.get(API + "day/", {"date": "2026-09-25"})
+        self.assertEqual(response.status_code, 401)
+        # With the Google-gate login put back (as in production) the header
+        # does sign the caller in on this path -- and the API still says 401.
+        with self.settings(MIDDLEWARE=production_middleware()):
+            response = Client().get(
+                API + "day/",
+                {"date": "2026-09-25"},
+                HTTP_X_AUTH_REQUEST_EMAIL=boss.email,
+            )
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
         self.assertEqual(response.status_code, 401)
 
     def test_wrong_method_and_bad_input_are_json_errors(self):

@@ -11,8 +11,14 @@ from django.test import Client
 from django.urls import resolve
 
 from horilla.ccdocs_attendance import common, views_public
+from horilla.ccdocs_attendance.apps import public_path_guard_check
+from horilla.ccdocs_attendance.middleware import DOTTED_PATH, is_public_path
 from horilla.ccdocs_attendance.models import AttendanceNotice
-from horilla.ccdocs_attendance.tests.base import LINK_TOKEN, AttendanceTestCase
+from horilla.ccdocs_attendance.tests.base import (
+    LINK_TOKEN,
+    AttendanceTestCase,
+    production_middleware,
+)
 
 FORM = f"/attendance-notice/{LINK_TOKEN}/"
 
@@ -241,26 +247,79 @@ class PublicFormTests(AttendanceTestCase):
             "HTTP_X_AUTH_REQUEST_EMAIL": boss.email,
             "HTTP_X_AUTH_REQUEST_USER": "boss",
         }
-        page = self.client.get(FORM, **headers)
-        self.assertEqual(page.status_code, 200)
-        self.assertTrue(page.wsgi_request.user.is_anonymous)
-        response = self.client.post(
-            FORM,
-            {
-                "employee": str(self.agent.id),
-                "kind": "out",
-                "from_date": self.today.isoformat(),
-                "reason": "sick",
-            },
-            HTTP_CF_CONNECTING_IP="198.51.100.9",
-            **headers,
-        )
+        # Horilla hands every visitor an (empty) session cookie, so the test
+        # reads what the session holds, not whether a cookie came back.
+        with self.settings(MIDDLEWARE=production_middleware()):
+            control = Client()
+            response = control.get("/ccdocs-attendance/manage/", **headers)
+            self.assertTrue(response.wsgi_request.user.is_authenticated)
+            self.assertEqual(control.session.get("_auth_user_id"), str(boss.pk))
+
+            for path in (
+                "/attendance-notice/ping/",
+                FORM,
+                FORM + "thanks/",
+                "/attendance-notice",
+                "/Attendance-Notice/ping/",
+            ):
+                with self.subTest(path=path):
+                    client = Client()
+                    response = client.get(path, **headers)
+                    self.assertTrue(response.wsgi_request.user.is_anonymous)
+                    self.assertNotIn("_auth_user_id", client.session)
+
+            client = Client()
+            response = client.post(
+                FORM,
+                {
+                    "employee": str(self.agent.id),
+                    "kind": "out",
+                    "from_date": self.today.isoformat(),
+                    "reason": "sick",
+                },
+                HTTP_CF_CONNECTING_IP="198.51.100.9",
+                **headers,
+            )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.wsgi_request.user.is_anonymous)
-        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertNotIn("_auth_user_id", client.session)
         notice = AttendanceNotice.objects.get()
         self.assertTrue(notice.filed_by_self)
         self.assertEqual(notice.filed_by_name, "")
+
+    def test_public_path_matching(self):
+        for path in (
+            "/attendance-notice",
+            "/attendance-notice/",
+            "/attendance-notice/ping/",
+            "/ATTENDANCE-NOTICE/x/",
+            "//attendance-notice/x/",
+            "/other/../attendance-notice/x/",
+        ):
+            self.assertTrue(is_public_path(path), path)
+        for path in (
+            "/",
+            "/attendance-noticex/",
+            "/attendance-notices/",
+            "/ccdocs-attendance/manage/",
+            "/employee/attendance-notice/",
+        ):
+            self.assertFalse(is_public_path(path), path)
+
+    def test_the_guard_is_first_and_the_startup_check_holds_it_there(self):
+        self.assertEqual(settings.MIDDLEWARE[0], DOTTED_PATH)
+        self.assertEqual(public_path_guard_check(), [])
+        with self.settings(MIDDLEWARE=production_middleware()):
+            self.assertEqual(public_path_guard_check(), [])
+        without = [m for m in production_middleware() if m != DOTTED_PATH]
+        with self.settings(MIDDLEWARE=without):
+            self.assertEqual(
+                [e.id for e in public_path_guard_check()], ["ccdocs_attendance.E001"]
+            )
+        with self.settings(MIDDLEWARE=without + [DOTTED_PATH]):
+            self.assertEqual(
+                [e.id for e in public_path_guard_check()], ["ccdocs_attendance.E002"]
+            )
 
     def test_wrong_method_is_a_plain_405(self):
         self.assertEqual(self.client.put(FORM).status_code, 405)

@@ -22,6 +22,11 @@ INSTALLED_APPS.append("horilla_backup")
 INSTALLED_APPS.append("project")
 # CCDocs floor attendance: late/out notice form, points ledger, engine API
 INSTALLED_APPS.append("horilla.ccdocs_attendance")
+# ...and its guard, FIRST in the list: /attendance-notice/ has no Google gate in
+# front, so it drops the sign-in headers there before the gate login sees them.
+settings.MIDDLEWARE.insert(
+    0, "horilla.ccdocs_attendance.middleware.PublicNoticeMiddleware"
+)
 if settings.env("AWS_ACCESS_KEY_ID", default=None) and "storages" not in INSTALLED_APPS:
     INSTALLED_APPS.append("storages")
 
