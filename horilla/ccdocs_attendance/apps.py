@@ -39,8 +39,10 @@ class CcdocsAttendanceConfig(AppConfig):
     verbose_name = "CCDocs Floor Attendance"
 
     def ready(self):
+        from django.db.models.signals import pre_delete
         from django.urls import include, path
 
+        from horilla.ccdocs_attendance import models
         from horilla.urls import urlpatterns
 
         # Same pattern as leave/apps.py: the app mounts itself, so horilla/urls.py
@@ -55,4 +57,12 @@ class CcdocsAttendanceConfig(AppConfig):
             path("ccdocs-attendance/", include("horilla.ccdocs_attendance.urls")),
         )
         checks.register(public_path_guard_check, checks.Tags.security)
+        # Rows are voided or excused, never deleted: this also stops bulk
+        # deletes and Horilla's generic-delete page (which a superuser passes).
+        for model in models.NEVER_DELETED_MODELS:
+            pre_delete.connect(
+                models.refuse_delete,
+                sender=model,
+                dispatch_uid=f"ccdocs_attendance_never_delete_{model.__name__}",
+            )
         super().ready()

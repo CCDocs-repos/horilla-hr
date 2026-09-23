@@ -3,16 +3,37 @@ Floor attendance models.
 
 One store: every notice, day result, point and delivery claim lives here.
 Points are never deleted -- a wrong point is voided (voided_at/by/reason) and a
-voided point is never brought back by the engine.
+voided point is never brought back by the engine. No row of any model here can
+be deleted: delete() refuses, and apps.py hooks refuse_delete to pre_delete so
+bulk deletes and Horilla's generic-delete page (open to any superuser) refuse
+too.
 """
 
+from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Q
 
 from employee.models import Employee
 
+NEVER_DELETED = (
+    "Attendance records are never deleted. Void the point, mark the notice or "
+    "excuse the days on the attendance manager page instead."
+)
 
-class AgentLink(models.Model):
+
+def refuse_delete(sender, instance, **kwargs):
+    raise PermissionDenied(NEVER_DELETED)
+
+
+class NeverDeleted(models.Model):
+    class Meta:
+        abstract = True
+
+    def delete(self, *args, **kwargs):
+        raise PermissionDenied(NEVER_DELETED)
+
+
+class AgentLink(NeverDeleted):
     """Which dialer login (and/or WebWork email) belongs to an employee, and when."""
 
     employee = models.ForeignKey(
@@ -46,7 +67,7 @@ class AgentLink(models.Model):
         return f"link {self.id}: employee {self.employee_id} -> {self.dialer_user or self.webwork_email}"
 
 
-class AttendanceNotice(models.Model):
+class AttendanceNotice(NeverDeleted):
     """A late/out notice filed on the public form (or an excuse from the manager page)."""
 
     KIND_CHOICES = [("late", "Late"), ("out", "Out")]
@@ -90,7 +111,7 @@ class AttendanceNotice(models.Model):
         return f"notice {self.id}: employee {self.employee_id} {self.kind} {self.from_date}..{self.to_date}"
 
 
-class DayResult(models.Model):
+class DayResult(NeverDeleted):
     """What the engine decided for one employee on one floor day."""
 
     STATUS_CHOICES = [
@@ -135,7 +156,7 @@ class DayResult(models.Model):
         return f"day {self.day} employee {self.employee_id}: {self.status}"
 
 
-class PointEntry(models.Model):
+class PointEntry(NeverDeleted):
     """One attendance point (or two). Void only, never delete."""
 
     SOURCE_CHOICES = [("engine", "Engine"), ("manager", "Manager page")]
@@ -171,7 +192,7 @@ class PointEntry(models.Model):
         )
 
 
-class Delivery(models.Model):
+class Delivery(NeverDeleted):
     """One email or Slack post, claimed once so it is never sent twice."""
 
     KIND_CHOICES = [
@@ -204,3 +225,6 @@ class Delivery(models.Model):
 
     def __str__(self):
         return f"delivery {self.key}: {self.status}"
+
+
+NEVER_DELETED_MODELS = (AgentLink, AttendanceNotice, DayResult, PointEntry, Delivery)

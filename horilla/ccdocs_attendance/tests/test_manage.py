@@ -4,11 +4,20 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.test import Client
+from django.urls import reverse
 from django.utils import timezone
 
 from horilla.ccdocs_attendance import common
-from horilla.ccdocs_attendance.models import AttendanceNotice, DayResult, PointEntry
+from horilla.ccdocs_attendance.models import (
+    AgentLink,
+    AttendanceNotice,
+    DayResult,
+    Delivery,
+    PointEntry,
+)
 from horilla.ccdocs_attendance.tests.base import AttendanceTestCase
 
 MANAGE = "/ccdocs-attendance/manage/"
@@ -262,3 +271,72 @@ class ManagePageTests(AttendanceTestCase):
         self.point.refresh_from_db()
         self.assertFalse(self.point.voided)
         self.assertEqual(AttendanceNotice.objects.count(), 0)
+
+
+class NeverDeletedTests(AttendanceTestCase):
+    """Void or excuse only: no row here can be deleted, not even by a superuser."""
+
+    def setUp(self):
+        super().setUp()
+        today = common.today_et()
+        agent = self.make_employee("Ann", "Agent", "ann@example.com", position=27)
+        notice = AttendanceNotice.objects.create(
+            employee=agent,
+            kind="out",
+            from_date=today,
+            to_date=today,
+            filed_at=timezone.now(),
+        )
+        day = DayResult.objects.create(
+            employee=agent, day=today, status="out", notice=notice
+        )
+        self.rows = [
+            notice,
+            day,
+            PointEntry.objects.create(
+                employee=agent,
+                day=today,
+                rule_key="out_no_notice",
+                points=Decimal("2"),
+                idem_key=f"{today}:{agent.id}:out_no_notice",
+                day_result=day,
+            ),
+            AgentLink.objects.create(
+                employee=agent, dialer_user="9002", valid_from=today
+            ),
+            Delivery.objects.create(key=f"out:{today}:{agent.id}", kind="out_email"),
+        ]
+        self.boss = self.make_employee("Sue", "Super", "sue@example.test", position=90)
+        boss_user = self.boss.employee_user_id
+        boss_user.is_superuser = True
+        boss_user.is_staff = True
+        boss_user.save()
+
+    def assert_all_rows_still_there(self):
+        for row in self.rows:
+            self.assertTrue(
+                type(row).objects.filter(pk=row.pk).exists(), type(row).__name__
+            )
+
+    def test_horilla_generic_delete_cannot_remove_a_row_even_for_a_superuser(self):
+        client = Client()
+        client.force_login(self.boss.employee_user_id)
+        session = client.session
+        session["selected_company"] = "all"
+        session.save()
+        for row in self.rows:
+            with self.subTest(model=type(row).__name__):
+                client.post(
+                    f"{reverse('generic-delete')}"
+                    f"?model=ccdocs_attendance.{type(row).__name__}&pk={row.pk}"
+                )
+        self.assert_all_rows_still_there()
+
+    def test_delete_and_bulk_delete_are_refused(self):
+        for row in self.rows:
+            with self.subTest(model=type(row).__name__):
+                with self.assertRaises(PermissionDenied):
+                    row.delete()
+                with self.assertRaises(PermissionDenied), transaction.atomic():
+                    type(row).objects.filter(pk=row.pk).delete()
+        self.assert_all_rows_still_there()
