@@ -204,6 +204,9 @@ class Delivery(NeverDeleted):
         ("slack_close", "Slack day summary"),
         ("slack_counts", "Slack counts line"),
         ("slack_hold", "Slack hold post"),
+        # Not a send: the engine's own memory of a pause/resume message it read
+        # in Slack (key switch:<slack ts>), kept after Slack pages it away.
+        ("pause_switch", "Pause switch message"),
     ]
     STATUS_CHOICES = [
         ("attempting", "Attempting"),
