@@ -7,6 +7,7 @@ from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import DatabaseError
 from django.test import Client
 from django.urls import resolve
 
@@ -57,6 +58,21 @@ class PublicFormTests(AttendanceTestCase):
         response = self.client.get("/attendance-notice/ping/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"attendance-notice-ok")
+
+    def test_ping_is_red_when_the_form_is_switched_off(self):
+        with mock.patch.dict(os.environ, {"ATTENDANCE_NOTICE_LINK_TOKEN": ""}):
+            response = self.client.get("/attendance-notice/ping/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.content, b"attendance-notice-not-configured")
+        self.assertNotIn(b"attendance-notice-ok", response.content)
+
+    def test_ping_is_red_when_the_database_does_not_answer(self):
+        with mock.patch.object(
+            AttendanceNotice.objects, "exists", side_effect=DatabaseError("down")
+        ), self.assertLogs("horilla.ccdocs_attendance.views_public", "ERROR"):
+            response = self.client.get("/attendance-notice/ping/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.content, b"attendance-notice-db-error")
 
     def test_wrong_token_is_404(self):
         response = self.client.get("/attendance-notice/not-the-token/")

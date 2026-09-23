@@ -11,6 +11,7 @@ import logging
 import time as time_module
 
 from django.core.cache import cache
+from django.db import DatabaseError
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -99,9 +100,26 @@ def _choices():
     )
 
 
+def _ping_down(body):
+    return HttpResponse(body, status=503, content_type="text/plain")
+
+
+@never_cache
 def ping(request):
+    """
+    The keyword only when the form really works: its link token is set and
+    the database answers. Anything else is a 503 with a different body, so
+    the keyword monitor goes red.
+    """
     if request.method not in ("GET", "HEAD"):
         return _method_not_allowed()
+    if not common.link_token():
+        return _ping_down("attendance-notice-not-configured")
+    try:
+        AttendanceNotice.objects.exists()
+    except DatabaseError:
+        logger.exception("attendance notice ping: the database check failed")
+        return _ping_down("attendance-notice-db-error")
     return HttpResponse(PING_KEYWORD, content_type="text/plain")
 
 
