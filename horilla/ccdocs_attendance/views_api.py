@@ -867,6 +867,13 @@ def deliveries_list_view(request):
                 400, "bad_request", "status must be attempting, sent or failed"
             )
         deliveries = deliveries.filter(status=status)
+    kind = request.GET.get("kind")
+    if kind:
+        if kind not in DELIVERY_KINDS:
+            raise ApiError(
+                400, "bad_request", f"kind must be one of {sorted(DELIVERY_KINDS)}"
+            )
+        deliveries = deliveries.filter(kind=kind)
     older = request.GET.get("older_than_minutes")
     if older not in (None, ""):
         try:

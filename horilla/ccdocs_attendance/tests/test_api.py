@@ -721,3 +721,35 @@ class DeliveriesTests(ApiTestCase):
             ).status_code,
             400,
         )
+
+    def test_list_by_kind_keeps_the_pause_switch_memory(self):
+        switch = {"ts": "1790000000.000100", "paused": True, "user": "U0TEST0001"}
+        for key, kind in (
+            ("switch:1790000000.000100", "pause_switch"),
+            ("late:2026-09-25:900", "late_email"),
+        ):
+            claim = {"key": key, "kind": kind, "detail": switch}
+            self.assertEqual(
+                self.post_json("deliveries/claim/", claim).status_code, 201
+            )
+            self.assertEqual(
+                self.post_json(
+                    "deliveries/done/", {"key": key, "status": "sent", "detail": {}}
+                ).status_code,
+                200,
+            )
+        self.post_json("deliveries/claim/", {"key": "switch:2", "kind": "pause_switch"})
+        listed = self.get("deliveries/", kind="pause_switch", status="sent")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(
+            [(d["key"], d["kind"], d["detail"]) for d in listed.json()["deliveries"]],
+            [("switch:1790000000.000100", "pause_switch", switch)],
+        )
+        every = self.get("deliveries/", kind="pause_switch").json()["deliveries"]
+        self.assertEqual(
+            sorted(d["key"] for d in every),
+            ["switch:1790000000.000100", "switch:2"],
+        )
+        bad = self.get("deliveries/", kind="fax")
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(bad.json()["error"], "bad_request")
