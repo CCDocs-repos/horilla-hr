@@ -397,6 +397,7 @@ def day_view(request):
             }
         )
 
+    filed_on_day = common.notices_filed_on(day)
     window_start, window_end = common.reset_window(day)
     points = {
         str(emp_id): {
@@ -436,6 +437,11 @@ def day_view(request):
             ],
             "history": history,
             "points": points,
+            "notice_form": {
+                "filed_on_day": filed_on_day,
+                "alarm_at": common.NOTICE_ALARM_PER_DAY,
+                "alarm": filed_on_day >= common.NOTICE_ALARM_PER_DAY,
+            },
         }
     )
 

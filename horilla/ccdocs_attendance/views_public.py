@@ -2,8 +2,12 @@
 Public late/out notice form: /attendance-notice/<link-token>/
 
 No sign-in. It never logs anyone in and never reads the X-Auth-Request-*
-headers. Wrong token -> 404; token not configured -> 503; CSRF on; honeypot;
-per-IP limit (keyed on CF-Connecting-IP) + a global daily ceiling.
+headers (middleware.PublicNoticeMiddleware removes them before the Google-gate
+login can see them). Wrong token -> 404; token not configured -> 503; CSRF on;
+honeypot; per-IP limit (keyed on CF-Connecting-IP). There is no daily ceiling
+for everyone: one person with the link must not be able to close the form for
+every agent. A busy day only raises an alarm (NOTICE_ALARM_PER_DAY, logged here
+and reported by GET day/ as notice_form.alarm) and the form keeps saving.
 """
 
 import hmac
@@ -25,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 PING_KEYWORD = "attendance-notice-ok"
 PER_IP_PER_HOUR = 20
-DAILY_CEILING = 500
 CACHE_PREFIX = "ccdocs_attendance:notice"
 
 
@@ -88,10 +91,6 @@ def _ip_bucket_full(ip_hash) -> bool:
     return _count(f"{CACHE_PREFIX}:ip:{ip_hash}:{hour}", 3600) > PER_IP_PER_HOUR
 
 
-def _day_key():
-    return f"{CACHE_PREFIX}:day:{common.today_et().isoformat()}"
-
-
 def _choices():
     employees = list(common.floor_employees())
     labels = common.labels_for(employees)
@@ -123,6 +122,20 @@ def ping(request):
     return HttpResponse(PING_KEYWORD, content_type="text/plain")
 
 
+def _raise_alarm_if_busy(ip_hash):
+    filed_today = common.notices_filed_on(common.today_et())
+    if filed_today >= common.NOTICE_ALARM_PER_DAY:
+        # One line per busy day; GET day/ reports it to the engine every run.
+        if cache.add(f"{CACHE_PREFIX}:alarm:{common.today_et()}", 1, 2 * 24 * 3600):
+            logger.error(
+                "attendance notice form: %s notices filed today (alarm at %s); "
+                "latest from ip_hash %s",
+                filed_today,
+                common.NOTICE_ALARM_PER_DAY,
+                ip_hash[:12],
+            )
+
+
 @never_cache
 def notice_form(request, token):
     if request.method not in ("GET", "HEAD", "POST"):
@@ -145,16 +158,6 @@ def notice_form(request, token):
         form = NoticeForm(request.POST, employee_choices=choices, today=today)
         if form.is_bot():
             return redirect("ccdocs-attendance-notice-thanks", token=token)
-        if (cache.get(_day_key()) or 0) >= DAILY_CEILING:
-            logger.error(
-                "attendance notice form hit its daily ceiling of %s", DAILY_CEILING
-            )
-            return _message(
-                request,
-                429,
-                "The form is closed for today",
-                "Please tell your team lead you could not send the form.",
-            )
         if form.is_valid():
             data = form.cleaned_data
             notice = AttendanceNotice.objects.create(
@@ -170,8 +173,8 @@ def notice_form(request, token):
                 ip_hash=ip_hash,
                 status="requested",
             )
-            _count(_day_key(), 2 * 24 * 3600)
             logger.info("attendance notice %s filed (%s)", notice.id, notice.kind)
+            _raise_alarm_if_busy(ip_hash)
             return redirect("ccdocs-attendance-notice-thanks", token=token)
     else:
         form = NoticeForm(employee_choices=choices, today=today)

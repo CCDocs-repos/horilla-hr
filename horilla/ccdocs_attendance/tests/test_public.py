@@ -247,17 +247,25 @@ class PublicFormTests(AttendanceTestCase):
         )
         self.assertEqual(views_public.client_ip(request), "192.0.2.9")
 
-    def test_global_daily_ceiling(self):
-        with mock.patch.object(views_public, "DAILY_CEILING", 2):
+    def test_a_busy_day_raises_an_alarm_but_never_closes_the_form(self):
+        with mock.patch.object(common, "NOTICE_ALARM_PER_DAY", 2):
             self.assertEqual(self.post(ip="192.0.2.1").status_code, 302)
-            self.assertEqual(self.post(ip="192.0.2.2").status_code, 302)
-            response = self.post(ip="192.0.2.3")
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(AttendanceNotice.objects.count(), 2)
+            with self.assertLogs("horilla.ccdocs_attendance.views_public", "ERROR"):
+                self.assertEqual(self.post(ip="192.0.2.2").status_code, 302)
+            # Still saving, and the alarm line is written once a day, not per form.
+            with self.assertNoLogs("horilla.ccdocs_attendance.views_public", "ERROR"):
+                self.assertEqual(self.post(ip="192.0.2.3").status_code, 302)
+        self.assertEqual(AttendanceNotice.objects.count(), 3)
 
     def test_a_forged_identity_header_stays_anonymous(self):
+        """
+        Runs with the production middleware (the Google-gate login put back)
+        and a @ccdocs.com superuser. The first request is the control: the same
+        header on a normal Horilla page DOES sign the caller in, so the gate is
+        live here and this test can fail.
+        """
         boss = User.objects.create_superuser(
-            "boss", "boss@example.com", "not-used-pw-123"
+            "boss", "boss@ccdocs.com", "not-used-pw-123"
         )
         headers = {
             "HTTP_X_AUTH_REQUEST_EMAIL": boss.email,

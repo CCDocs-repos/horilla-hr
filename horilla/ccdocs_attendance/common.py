@@ -10,7 +10,7 @@ makes Django fall back to Asia/Kolkata).
 import hashlib
 import os
 from collections import Counter, defaultdict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -41,6 +41,10 @@ WEEKDAY_NAMES = (
 
 DEFAULT_PUBLIC_BASE = "https://hr.ccdocs.com"
 
+# Notices filed in one New York day at which the form raises an alarm (it keeps
+# saving). The whole floor is about 60 people, so a real day is far below this.
+NOTICE_ALARM_PER_DAY = 100
+
 
 def now_et():
     return timezone.now().astimezone(ET)
@@ -53,6 +57,16 @@ def today_et():
 def at_et(day: date, clock: time) -> datetime:
     """An aware datetime for a wall-clock time on a day in New York (DST-aware)."""
     return datetime.combine(day, clock.replace(tzinfo=None), tzinfo=ET)
+
+
+def notices_filed_on(day: date) -> int:
+    """How many notices were filed on this New York day (any status)."""
+    from horilla.ccdocs_attendance.models import AttendanceNotice
+
+    return AttendanceNotice.objects.filter(
+        filed_at__gte=at_et(day, time(0, 0)),
+        filed_at__lt=at_et(day + timedelta(days=1), time(0, 0)),
+    ).count()
 
 
 def iso_et(value):

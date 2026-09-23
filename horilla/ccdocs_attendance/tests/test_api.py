@@ -202,6 +202,25 @@ class DayReadTests(ApiTestCase):
             self.get("day/", date="2026-09-25", include="999999").status_code, 404
         )
 
+    def test_notice_form_counts_notices_filed_on_the_new_york_day(self):
+        monday = date(2026, 11, 2)  # EST: the New York day is 05:00Z..05:00Z
+        for filed_at in (
+            datetime(2026, 11, 2, 4, 59, tzinfo=dt_timezone.utc),  # Sun 23:59 ET
+            datetime(2026, 11, 2, 5, 0, tzinfo=dt_timezone.utc),  # Mon 00:00 ET
+            datetime(2026, 11, 3, 4, 59, tzinfo=dt_timezone.utc),  # Mon 23:59 ET
+            datetime(2026, 11, 3, 5, 0, tzinfo=dt_timezone.utc),  # Tue 00:00 ET
+        ):
+            self.notice(self.agent, monday + timedelta(days=7), filed_at=filed_at)
+        body = self.get("day/", date=monday.isoformat()).json()
+        self.assertEqual(
+            body["notice_form"], {"filed_on_day": 2, "alarm_at": 100, "alarm": False}
+        )
+        with mock.patch.object(common, "NOTICE_ALARM_PER_DAY", 2):
+            body = self.get("day/", date=monday.isoformat()).json()
+        self.assertEqual(
+            body["notice_form"], {"filed_on_day": 2, "alarm_at": 2, "alarm": True}
+        )
+
     def test_form_url_is_null_when_the_link_token_is_not_set(self):
         with mock.patch.dict(os.environ, {"ATTENDANCE_NOTICE_LINK_TOKEN": ""}):
             self.assertIsNone(self.get("day/", date="2026-09-25").json()["form_url"])
