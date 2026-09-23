@@ -20,6 +20,8 @@ INSTALLED_APPS.append("helpdesk")
 INSTALLED_APPS.append("offboarding")
 INSTALLED_APPS.append("horilla_backup")
 INSTALLED_APPS.append("project")
+# CCDocs floor attendance: late/out notice form, points ledger, engine API
+INSTALLED_APPS.append("horilla.ccdocs_attendance")
 if settings.env("AWS_ACCESS_KEY_ID", default=None) and "storages" not in INSTALLED_APPS:
     INSTALLED_APPS.append("storages")
 

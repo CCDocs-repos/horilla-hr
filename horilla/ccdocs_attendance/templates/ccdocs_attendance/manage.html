@@ -1,0 +1,180 @@
+{% load tz %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Floor attendance points</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f5f7; color: #1d2330; font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; }
+    h1 { font-size: 1.4rem; margin: 0 0 4px; }
+    h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+    p { margin: 0 0 10px; }
+    .muted { color: #5b6475; }
+    .card { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 640px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e3e6eb; vertical-align: top; }
+    th { font-size: .85rem; color: #5b6475; font-weight: 600; }
+    tr.void td { color: #8a93a3; text-decoration: line-through; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .level { font-weight: 600; color: #b3261e; }
+    .msg { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; background: #e8f0fe; }
+    .msg.error { background: #fdecea; color: #b3261e; }
+    .msg.success { background: #e6f4ea; color: #1e6b34; }
+    form.inline { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
+    input[type=text], input[type=date], select { padding: 6px 8px; font-size: 14px; border: 1px solid #b8bfcc; border-radius: 6px; }
+    button { padding: 6px 10px; font-size: 14px; border: 0; border-radius: 6px; background: #1f5eff; color: #fff; cursor: pointer; }
+    button.danger { background: #b3261e; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; align-items: end; }
+    .grid label { display: block; font-size: .85rem; color: #5b6475; margin-bottom: 4px; }
+    .grid input, .grid select { width: 100%; }
+    a { color: #1f5eff; }
+  </style>
+</head>
+<body>
+{% timezone "America/New_York" %}
+<main>
+  <p><a href="/">Back to Horilla</a></p>
+  <h1>Floor attendance points</h1>
+  <p class="muted">Points this half-year: {{ window_start|date:"M j, Y" }} to {{ window_end|date:"M j, Y" }}. Today is {{ today|date:"l, M j" }} (Eastern time).
+    {% if can_fix %}You can fix points on this page.{% else %}You can view this page. Only Attendance Fixers can change points.{% endif %}</p>
+
+  {% for message in messages %}<div class="msg {{ message.tags }}">{{ message }}</div>{% endfor %}
+
+  {% if only_id is not None %}
+    <p>Showing only <strong>{{ only_label|default:only_id }}</strong>. <a href="?">Show everyone</a></p>
+  {% endif %}
+
+  <h2>Points per person</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>Person</th><th>Full name</th><th>Shift</th><th class="num">Points</th><th>Level</th><th></th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.label }}{% if not row.active %} <span class="muted">(not active)</span>{% endif %}</td>
+          <td>{{ row.name }}</td>
+          <td>{{ row.shift|default:"no shift" }}</td>
+          <td class="num">{{ row.total|floatformat:"-2" }}</td>
+          <td class="level">{{ row.level }}</td>
+          <td><a href="?employee={{ row.id }}">History</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">Nobody yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Point history (newest first{% if entries|length >= list_limit %}, latest {{ list_limit }}{% endif %})</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>Day</th><th>Person</th><th>Why</th><th class="num">Points</th><th>Status</th>{% if can_fix %}<th>Void</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for entry in entries %}
+        <tr class="{% if entry.voided %}void{% endif %}">
+          <td>{{ entry.day|date:"D M j" }}</td>
+          <td>{{ entry.person }}</td>
+          <td>{% if entry.rule_key == "late" %}Late{% elif entry.rule_key == "out_notice" %}Out, with a form{% elif entry.rule_key == "out_no_notice" %}Out, no form in time{% else %}{{ entry.rule_key }}{% endif %}</td>
+          <td class="num">{{ entry.points|floatformat:"-2" }}</td>
+          <td>{% if entry.voided %}Voided by {{ entry.voided_by }}: {{ entry.void_reason }}{% else %}Counts{% endif %}</td>
+          {% if can_fix %}
+          <td>{% if not entry.voided %}
+            <form class="inline" method="post" action="{% url 'ccdocs-attendance-void-point' entry.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="back_employee" value="{{ only_id|default_if_none:'' }}">
+              <input type="text" name="reason" placeholder="Reason" maxlength="300" required>
+              <button type="submit" class="danger">Void</button>
+            </form>
+          {% endif %}</td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">No points yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Late / out forms (last 30 days and coming up)</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>Person</th><th>Kind</th><th>Days</th><th>Arrival</th><th>Reason</th><th>Filed</th><th>Status</th>{% if can_fix %}<th>Excuse</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for notice in notices %}
+        <tr>
+          <td>{{ notice.person }}</td>
+          <td>{% if notice.kind == "late" %}Late{% else %}Out{% endif %}</td>
+          <td>{{ notice.from_date|date:"M j" }}{% if notice.to_date != notice.from_date %} to {{ notice.to_date|date:"M j" }}{% endif %}</td>
+          <td>{{ notice.expected_arrival|time:"g:i A"|default:"" }}</td>
+          <td>{{ notice.reason }}</td>
+          <td>{{ notice.filed_at|date:"M j g:i A" }} ET{% if not notice.filed_by_self %}<br><span class="muted">by {{ notice.filed_by_name }}</span>{% endif %}</td>
+          <td>{{ notice.get_status_display }}{% if notice.status_changed_by %}<br><span class="muted">{{ notice.status_changed_by }}</span>{% endif %}</td>
+          {% if can_fix %}
+          <td>{% if notice.status == "requested" %}
+            <form class="inline" method="post" action="{% url 'ccdocs-attendance-excuse-notice' notice.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="back_employee" value="{{ only_id|default_if_none:'' }}">
+              <input type="text" name="note" placeholder="Note (optional)" maxlength="300">
+              <button type="submit">Mark excused</button>
+            </form>
+          {% endif %}</td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="muted">No forms.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Day results (last 14 days)</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>Day</th><th>Person</th><th>Result</th><th>Start</th><th>First sign-in</th><th class="num">Minutes late</th><th>Done</th></tr></thead>
+      <tbody>
+      {% for result in day_results %}
+        <tr>
+          <td>{{ result.day|date:"D M j" }}</td>
+          <td>{{ result.person }}</td>
+          <td>{{ result.get_status_display }}{% if result.excused_by %}<br><span class="muted">by {{ result.excused_by }}</span>{% endif %}</td>
+          <td>{{ result.scheduled_start|time:"g:i A"|default:"" }}</td>
+          <td>{{ result.first_login_at|date:"g:i:s A"|default:"" }}</td>
+          <td class="num">{{ result.minutes_late|default_if_none:"" }}</td>
+          <td>{% if result.closed %}Yes{% else %}Not yet{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="muted">No results.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if can_fix %}
+  <h2>Excuse dates</h2>
+  <div class="card">
+    <p class="muted">Use this for approved time off, jury duty, a doctor's note, and the like. It voids every point in those days and marks them excused, including days that have not happened yet.</p>
+    <form method="post" action="{% url 'ccdocs-attendance-excuse-dates' %}">
+      {% csrf_token %}
+      <input type="hidden" name="back_employee" value="{{ only_id|default_if_none:'' }}">
+      <div class="grid">
+        <div><label for="ex-employee">Person</label>
+          <select id="ex-employee" name="employee_id" required>
+            <option value="">Pick a person</option>
+            {% for id, label in floor_choices %}<option value="{{ id }}"{% if id == only_id %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></div>
+        <div><label for="ex-from">First day</label><input id="ex-from" type="date" name="from_date" required></div>
+        <div><label for="ex-to">Last day</label><input id="ex-to" type="date" name="to_date"></div>
+        <div><label for="ex-reason">Reason</label><input id="ex-reason" type="text" name="reason" maxlength="300" required></div>
+        <div><button type="submit">Excuse these dates</button></div>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+</main>
+{% endtimezone %}
+</body>
+</html>

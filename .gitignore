@@ -134,6 +134,8 @@ dmypy.json
 **/migrations/**
 !**/migrations
 !**/migrations/__init__.py
+# ccdocs_attendance ships its migrations (the deployed 0001 must be the reviewed one)
+!horilla/ccdocs_attendance/migrations/*.py
 
 # media file
 media/
