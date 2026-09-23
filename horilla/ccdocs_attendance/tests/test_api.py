@@ -7,6 +7,7 @@ from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest import mock
 
+from django.db import IntegrityError
 from django.utils import timezone
 
 from employee.models import EmployeeWorkInformation
@@ -441,7 +442,7 @@ class DayResultsWriteTests(ApiTestCase):
         self.assertEqual(DayResult.objects.get().status, "excused")
         self.assertEqual(PointEntry.objects.count(), 0)
 
-    def test_the_whole_post_is_one_transaction(self):
+    def test_a_bad_result_writes_nothing(self):
         good = self.body()["results"][0]
         other = self.make_employee("Bob", "Agent", "bob@example.com")
         bad = dict(
@@ -453,6 +454,44 @@ class DayResultsWriteTests(ApiTestCase):
             "day-results/", {"date": FRIDAY.isoformat(), "results": [good, bad]}
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(DayResult.objects.count(), 0)
+        self.assertEqual(PointEntry.objects.count(), 0)
+
+    def test_the_whole_post_is_one_transaction(self):
+        # The second point's insert fails AFTER the first result (a day result
+        # and a point) was written: all of it must roll back.
+        good = self.body()["results"][0]
+        other = self.make_employee("Bob", "Agent", "bob@example.com")
+        second = dict(
+            good,
+            employee_id=other.id,
+            points=[
+                {
+                    "idem_key": f"{FRIDAY}:{other.id}:late",
+                    "rule_key": "late",
+                    "points": 1,
+                }
+            ],
+        )
+        real_create = PointEntry.objects.create
+        calls = []
+
+        def create_then_fail(**kwargs):
+            calls.append(kwargs["idem_key"])
+            if len(calls) == 2:
+                raise IntegrityError("made-up clash on the second point")
+            return real_create(**kwargs)
+
+        with mock.patch.object(
+            PointEntry.objects, "create", side_effect=create_then_fail
+        ):
+            response = self.post_json(
+                "day-results/",
+                {"date": FRIDAY.isoformat(), "results": [good, second]},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"], "conflict")
+        self.assertEqual(len(calls), 2)
         self.assertEqual(DayResult.objects.count(), 0)
         self.assertEqual(PointEntry.objects.count(), 0)
 
