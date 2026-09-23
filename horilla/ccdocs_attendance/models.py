@@ -68,7 +68,9 @@ class AttendanceNotice(models.Model):
     filed_by_name = models.CharField(max_length=120, blank=True, default="")
     filed_at = models.DateTimeField()
     ip_hash = models.CharField(max_length=64, blank=True, default="")
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="requested")
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default="requested"
+    )
     status_changed_at = models.DateTimeField(null=True, blank=True)
     status_changed_by = models.CharField(max_length=254, blank=True, default="")
     status_note = models.CharField(max_length=300, blank=True, default="")
@@ -164,7 +166,9 @@ class PointEntry(models.Model):
         return self.voided_at is not None
 
     def __str__(self):
-        return f"point {self.idem_key} = {self.points}{' (void)' if self.voided else ''}"
+        return (
+            f"point {self.idem_key} = {self.points}{' (void)' if self.voided else ''}"
+        )
 
 
 class Delivery(models.Model):
@@ -188,7 +192,9 @@ class Delivery(models.Model):
 
     key = models.CharField(max_length=200, unique=True)
     kind = models.CharField(max_length=20, choices=KIND_CHOICES)
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="attempting")
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default="attempting"
+    )
     detail = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

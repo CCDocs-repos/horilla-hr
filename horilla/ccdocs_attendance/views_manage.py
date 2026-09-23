@@ -31,11 +31,18 @@ from horilla.decorators import login_required
 
 MAX_EXCUSE_SPAN_DAYS = 62
 LIST_LIMIT = 200
-LEVELS = ((6, "6+: job review"), (5, "5: meeting"), (4, "4: written warning"), (3, "3: verbal warning"))
+LEVELS = (
+    (6, "6+: job review"),
+    (5, "5: meeting"),
+    (4, "4: written warning"),
+    (3, "3: verbal warning"),
+)
 
 
 def _in_group(user, name):
-    return bool(user and user.is_authenticated and user.groups.filter(name=name).exists())
+    return bool(
+        user and user.is_authenticated and user.groups.filter(name=name).exists()
+    )
 
 
 def can_fix(user):
@@ -111,7 +118,9 @@ def manage(request):
     only = request.GET.get("employee", "").strip()
     only_id = int(only) if only.isdigit() else None
 
-    window_points = PointEntry.objects.filter(day__gte=window_start, day__lte=window_end)
+    window_points = PointEntry.objects.filter(
+        day__gte=window_start, day__lte=window_end
+    )
     totals = defaultdict(Decimal)
     for entry in window_points.filter(voided_at__isnull=True):
         totals[entry.employee_id] += entry.points
@@ -133,7 +142,9 @@ def manage(request):
                 "label": labels[person.id],
                 "name": person.get_full_name(),
                 "active": person.is_active,
-                "position": getattr(work_info, "job_position_id", None) if work_info else None,
+                "position": getattr(work_info, "job_position_id", None)
+                if work_info
+                else None,
                 "shift": shift.employee_shift if shift else "",
                 "total": total,
                 "level": _level(total),
@@ -152,7 +163,9 @@ def manage(request):
     entries = list(entries[:LIST_LIMIT])
     notices = list(notices.order_by("-from_date", "-id")[:LIST_LIMIT])
     day_results = list(day_results.order_by("-day", "employee_id")[:LIST_LIMIT])
-    shown = {obj.employee_id for group in (entries, notices, day_results) for obj in group}
+    shown = {
+        obj.employee_id for group in (entries, notices, day_results) for obj in group
+    }
     missing = shown - set(names)
     if missing:
         names.update(common.labels_for(common._employees().filter(id__in=missing)))
@@ -216,7 +229,9 @@ def excuse_notice(request, notice_id):
         return _refuse(request, "Only Attendance Fixers can excuse a notice.")
     note = (request.POST.get("note") or "").strip()[:300]
     with transaction.atomic():
-        notice = AttendanceNotice.objects.select_for_update().filter(id=notice_id).first()
+        notice = (
+            AttendanceNotice.objects.select_for_update().filter(id=notice_id).first()
+        )
         if notice is None:
             messages.error(request, "That form does not exist.")
             return _back(request)
@@ -228,7 +243,12 @@ def excuse_notice(request, notice_id):
         notice.status_changed_by = common.user_tag(request.user)
         notice.status_note = note
         notice.save(
-            update_fields=["status", "status_changed_at", "status_changed_by", "status_note"]
+            update_fields=[
+                "status",
+                "status_changed_at",
+                "status_changed_by",
+                "status_note",
+            ]
         )
         reason = f"excused (form {notice.id})" + (f": {note}" if note else "")
         voided = _void_points(
@@ -244,7 +264,8 @@ def excuse_notice(request, notice_id):
             notice.employee_id, notice.from_date, notice.to_date, request.user, reason
         )
     messages.success(
-        request, f"Form marked excused. {voided} point(s) voided, {days} day(s) marked excused."
+        request,
+        f"Form marked excused. {voided} point(s) voided, {days} day(s) marked excused.",
     )
     return _back(request)
 
@@ -279,7 +300,9 @@ def excuse_dates(request):
         messages.error(request, "The last day cannot be before the first day.")
         return _back(request)
     if (last - first).days + 1 > MAX_EXCUSE_SPAN_DAYS:
-        messages.error(request, f"Excuse at most {MAX_EXCUSE_SPAN_DAYS} days at a time.")
+        messages.error(
+            request, f"Excuse at most {MAX_EXCUSE_SPAN_DAYS} days at a time."
+        )
         return _back(request)
 
     tag = common.user_tag(request.user)
@@ -289,7 +312,9 @@ def excuse_dates(request):
             request.user,
             f"excused dates: {reason}",
         )
-        days = _excuse_days(employee.id, first, last, request.user, f"excused dates: {reason}")
+        days = _excuse_days(
+            employee.id, first, last, request.user, f"excused dates: {reason}"
+        )
         # Days not scored yet (today, later this week) come out excused too:
         # the engine sees an excused notice and gives no points.
         now = timezone.now()

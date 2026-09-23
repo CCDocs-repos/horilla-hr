@@ -86,14 +86,24 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="write the changes")
-        parser.add_argument("--snapshot", help="where to save the JSON snapshot (with --apply)")
-        parser.add_argument("--revert", metavar="SNAPSHOT", help="undo a snapshot")
-        parser.add_argument("--late-shift-ids", default="", help="ids that get Floor 11-8 ET")
         parser.add_argument(
-            "--reassign-to-floor", default="", help="ids moved to Floor 12-8 ET from another shift"
+            "--snapshot", help="where to save the JSON snapshot (with --apply)"
         )
-        parser.add_argument("--fixers", default="", help="emails added to Attendance Fixers")
-        parser.add_argument("--viewers", default="", help="emails added to Attendance Viewers")
+        parser.add_argument("--revert", metavar="SNAPSHOT", help="undo a snapshot")
+        parser.add_argument(
+            "--late-shift-ids", default="", help="ids that get Floor 11-8 ET"
+        )
+        parser.add_argument(
+            "--reassign-to-floor",
+            default="",
+            help="ids moved to Floor 12-8 ET from another shift",
+        )
+        parser.add_argument(
+            "--fixers", default="", help="emails added to Attendance Fixers"
+        )
+        parser.add_argument(
+            "--viewers", default="", help="emails added to Attendance Viewers"
+        )
         parser.add_argument("--company-id", type=int, default=2)
 
     # ------------------------------------------------------------------ #
@@ -110,7 +120,9 @@ class Command(BaseCommand):
         if apply and not snapshot_path:
             raise CommandError("--apply needs --snapshot <path>")
         if snapshot_path and os.path.exists(snapshot_path):
-            raise CommandError(f"snapshot {snapshot_path} already exists; pick a new path")
+            raise CommandError(
+                f"snapshot {snapshot_path} already exists; pick a new path"
+            )
 
         company = Company.objects.filter(id=options["company_id"]).first()
         if company is None:
@@ -119,9 +131,13 @@ class Command(BaseCommand):
         reassign_ids = _ids(options["reassign_to_floor"], "--reassign-to-floor")
         both = sorted(set(late_ids) & set(reassign_ids))
         if both:
-            raise CommandError(f"ids in both --late-shift-ids and --reassign-to-floor: {both}")
+            raise CommandError(
+                f"ids in both --late-shift-ids and --reassign-to-floor: {both}"
+            )
 
-        self.say(f"ccdocs_attendance_setup: {'APPLY' if apply else 'DRY RUN (nothing is written)'}")
+        self.say(
+            f"ccdocs_attendance_setup: {'APPLY' if apply else 'DRY RUN (nothing is written)'}"
+        )
         problems = []
         plan = {
             "shifts": self._plan_shifts(company, problems),
@@ -133,19 +149,25 @@ class Command(BaseCommand):
                 problems,
             ),
         }
-        plan["work_info"] = self._plan_work_info(plan["shifts"], late_ids, reassign_ids, problems)
+        plan["work_info"] = self._plan_work_info(
+            plan["shifts"], late_ids, reassign_ids, problems
+        )
 
         if problems:
             for problem in problems:
                 self.say(f"  PROBLEM: {problem}")
             if apply:
                 raise CommandError(f"{len(problems)} problem(s); nothing was written")
-            self.say(f"{len(problems)} problem(s): --apply would refuse until they are fixed.")
+            self.say(
+                f"{len(problems)} problem(s): --apply would refuse until they are fixed."
+            )
             return
 
         changes = self._count(plan)
         if not apply:
-            self.say(f"{changes} change(s) would be made. Re-run with --apply --snapshot <path>.")
+            self.say(
+                f"{changes} change(s) would be made. Re-run with --apply --snapshot <path>."
+            )
             return
 
         with transaction.atomic():
@@ -167,9 +189,13 @@ class Command(BaseCommand):
             problems.append(f"shift days missing from Horilla: {missing_days}")
         planned = []
         for spec in SHIFT_SPECS:
-            found = list(EmployeeShift.objects.entire().filter(employee_shift=spec["name"]))
+            found = list(
+                EmployeeShift.objects.entire().filter(employee_shift=spec["name"])
+            )
             if len(found) > 1:
-                problems.append(f"{len(found)} shifts are named {spec['name']!r}; expected one")
+                problems.append(
+                    f"{len(found)} shifts are named {spec['name']!r}; expected one"
+                )
                 continue
             shift = found[0] if found else None
             item = {"spec": spec, "shift": shift, "new_schedules": []}
@@ -180,14 +206,22 @@ class Command(BaseCommand):
                 self._clean(shift, f"new shift {spec['name']!r}", problems)
                 self.say(f"  create shift {spec['name']!r} (company {company.id})")
             existing = (
-                {s.day.day: s for s in EmployeeShiftSchedule.objects.entire().filter(shift_id=shift)}
+                {
+                    s.day.day: s
+                    for s in EmployeeShiftSchedule.objects.entire().filter(
+                        shift_id=shift
+                    )
+                }
                 if shift.pk
                 else {}
             )
             for day_name in WORK_DAYS:
                 current = existing.get(day_name)
                 if current is not None:
-                    if (current.start_time, current.end_time) != (spec["start"], spec["end"]):
+                    if (current.start_time, current.end_time) != (
+                        spec["start"],
+                        spec["end"],
+                    ):
                         problems.append(
                             f"shift {spec['name']!r} {day_name} is "
                             f"{current.start_time}-{current.end_time}, expected "
@@ -205,7 +239,10 @@ class Command(BaseCommand):
                 if shift.pk:
                     schedule.shift_id = shift
                 self._clean(
-                    schedule, f"new schedule {spec['name']!r} {day_name}", problems, ["shift_id"]
+                    schedule,
+                    f"new schedule {spec['name']!r} {day_name}",
+                    problems,
+                    ["shift_id"],
                 )
                 item["new_schedules"].append(schedule)
                 self.say(
@@ -261,9 +298,7 @@ class Command(BaseCommand):
         explicit.update({emp_id: common.FLOOR_SHIFT_NAME for emp_id in reassign_ids})
 
         targets = {}
-        people = {
-            e.id: e for e in common._employees().filter(id__in=list(explicit))
-        }
+        people = {e.id: e for e in common._employees().filter(id__in=list(explicit))}
         for emp_id, shift_name in explicit.items():
             emp = people.get(emp_id)
             work_info = getattr(emp, "employee_work_info", None) if emp else None
@@ -277,7 +312,9 @@ class Command(BaseCommand):
                 problems.append(f"employee {emp_id}: not in a floor position")
             else:
                 targets[emp_id] = (emp, shift_name)
-        for emp in common.floor_employees().filter(employee_work_info__shift_id__isnull=True):
+        for emp in common.floor_employees().filter(
+            employee_work_info__shift_id__isnull=True
+        ):
             targets.setdefault(emp.id, (emp, common.FLOOR_SHIFT_NAME))
 
         planned = []
@@ -293,10 +330,18 @@ class Command(BaseCommand):
                 self._clean(work_info, f"employee {emp_id} work information", problems)
             else:
                 self._clean(
-                    work_info, f"employee {emp_id} work information", problems, ["shift_id"]
+                    work_info,
+                    f"employee {emp_id} work information",
+                    problems,
+                    ["shift_id"],
                 )
             planned.append(
-                {"employee_id": emp_id, "work_info_id": work_info.pk, "previous": previous, "shift_name": shift_name}
+                {
+                    "employee_id": emp_id,
+                    "work_info_id": work_info.pk,
+                    "previous": previous,
+                    "shift_name": shift_name,
+                }
             )
             self.say(
                 f"  employee {emp_id}: shift {previous if previous is not None else 'none'}"
@@ -338,10 +383,14 @@ class Command(BaseCommand):
             spec = item["spec"]
             shift = item["shift"]
             if shift is None:
-                shift = EmployeeShift(employee_shift=spec["name"], weekly_full_time=spec["weekly"])
+                shift = EmployeeShift(
+                    employee_shift=spec["name"], weekly_full_time=spec["weekly"]
+                )
                 shift.save()
                 shift.company_id.add(company)
-                snapshot["created"]["shifts"].append({"id": shift.pk, "name": spec["name"]})
+                snapshot["created"]["shifts"].append(
+                    {"id": shift.pk, "name": spec["name"]}
+                )
             shift_ids[spec["name"]] = shift.pk
             for schedule in item["new_schedules"]:
                 schedule.shift_id = shift
@@ -375,10 +424,14 @@ class Command(BaseCommand):
             group = item["group"]
             if group is None:
                 group = Group.objects.create(name=item["name"])
-                snapshot["created"]["groups"].append({"id": group.pk, "name": item["name"]})
+                snapshot["created"]["groups"].append(
+                    {"id": group.pk, "name": item["name"]}
+                )
             for user in item["add"]:
                 group.user_set.add(user)
-                snapshot["created"]["memberships"].append({"group_id": group.pk, "user_id": user.pk})
+                snapshot["created"]["memberships"].append(
+                    {"group_id": group.pk, "user_id": user.pk}
+                )
         return snapshot
 
     # ------------------------------------------------------------------ #
@@ -392,10 +445,14 @@ class Command(BaseCommand):
         except (OSError, json.JSONDecodeError) as exc:
             raise CommandError(f"cannot read snapshot {path}: {exc}")
         if snapshot.get("version") != SNAPSHOT_VERSION:
-            raise CommandError(f"snapshot {path} is not a version {SNAPSHOT_VERSION} snapshot")
+            raise CommandError(
+                f"snapshot {path} is not a version {SNAPSHOT_VERSION} snapshot"
+            )
         created = snapshot["created"]
         since = datetime.fromisoformat(snapshot["created_on_et"]).date()
-        self.say(f"ccdocs_attendance_setup --revert: {'APPLY' if apply else 'DRY RUN (nothing is written)'}")
+        self.say(
+            f"ccdocs_attendance_setup --revert: {'APPLY' if apply else 'DRY RUN (nothing is written)'}"
+        )
 
         with transaction.atomic():
             restored = 0
@@ -415,16 +472,18 @@ class Command(BaseCommand):
                 self.say(
                     f"  employee {change['employee_id']}: shift {current} -> {change['previous_shift_id']}"
                 )
-                EmployeeWorkInformation.objects.entire().filter(pk=change["work_info_id"]).update(
-                    shift_id=change["previous_shift_id"]
-                )
+                EmployeeWorkInformation.objects.entire().filter(
+                    pk=change["work_info_id"]
+                ).update(shift_id=change["previous_shift_id"])
                 restored += 1
 
             # WorkRecords has no creation time (Horilla bulk_creates the daily
             # drafts), so "created after the snapshot" = dated on/after the
             # snapshot day AND carrying a shift this snapshot assigned.
             drafts = WorkRecords.objects.entire().filter(
-                employee_id__in=[c["employee_id"] for c in snapshot["work_info_changes"]],
+                employee_id__in=[
+                    c["employee_id"] for c in snapshot["work_info_changes"]
+                ],
                 shift_id__in={c["new_shift_id"] for c in snapshot["work_info_changes"]},
                 work_record_type="DFT",
                 is_attendance_record=False,
@@ -432,20 +491,28 @@ class Command(BaseCommand):
                 date__gte=since,
             )
             draft_count = drafts.count()
-            self.say(f"  delete {draft_count} draft (DFT) work record(s) dated {since} or later")
+            self.say(
+                f"  delete {draft_count} draft (DFT) work record(s) dated {since} or later"
+            )
             drafts.delete()
 
             for membership in created["memberships"]:
                 group = Group.objects.filter(pk=membership["group_id"]).first()
                 if group is not None:
                     group.user_set.remove(membership["user_id"])
-                    self.say(f"  remove user {membership['user_id']} from {group.name!r}")
+                    self.say(
+                        f"  remove user {membership['user_id']} from {group.name!r}"
+                    )
             for item in created["groups"]:
                 deleted, _ = Group.objects.filter(pk=item["id"]).delete()
                 if deleted:
                     self.say(f"  delete group {item['name']!r}")
             schedule_ids = [s["id"] for s in created["schedules"]]
-            deleted, _ = EmployeeShiftSchedule.objects.entire().filter(pk__in=schedule_ids).delete()
+            deleted, _ = (
+                EmployeeShiftSchedule.objects.entire()
+                .filter(pk__in=schedule_ids)
+                .delete()
+            )
             self.say(f"  delete {deleted} schedule(s)")
             for item in created["shifts"]:
                 still_on = list(
@@ -468,6 +535,8 @@ class Command(BaseCommand):
 
             if not apply:
                 transaction.set_rollback(True)
-                self.say(f"DRY RUN: {restored} shift(s) would be restored. Re-run with --apply.")
+                self.say(
+                    f"DRY RUN: {restored} shift(s) would be restored. Re-run with --apply."
+                )
                 return
         self.say(f"Reverted: {restored} shift(s) restored.")

@@ -66,14 +66,24 @@ class AttendanceTestCase(TestCase):
         self.addCleanup(gmail.stop)
 
         self.company = Company.objects.create(
-            company="Test Co", address="1 Test St", country="US", state="NY", city="NYC", zip="10001"
+            company="Test Co",
+            address="1 Test St",
+            country="US",
+            state="NY",
+            city="NYC",
+            zip="10001",
         )
         # Department/EmployeeShift.save() pass save kwargs to clean(), so
         # objects.create() (force_insert=True) fails on them: save() plainly.
         self.department = Department(department="Floor")
         self.department.save()
         self.positions = {}
-        for pos_id, title in ((26, "Agent"), (27, "Senior Agent"), (28, "Team Lead"), (90, "Office")):
+        for pos_id, title in (
+            (26, "Agent"),
+            (27, "Senior Agent"),
+            (28, "Team Lead"),
+            (90, "Office"),
+        ):
             self.positions[pos_id] = JobPosition.objects.create(
                 id=pos_id, job_position=title, department_id=self.department
             )
@@ -119,9 +129,15 @@ class AttendanceTestCase(TestCase):
         user = emp.employee_user_id
         user.is_new_employee = False
         user.save()
-        return Employee.objects.entire().select_related("employee_work_info").get(pk=emp.pk)
+        return (
+            Employee.objects.entire()
+            .select_related("employee_work_info")
+            .get(pk=emp.pk)
+        )
 
-    def make_shift(self, name, start=time(12, 0), end=time(20, 0), days=common.WEEKDAY_NAMES[:5]):
+    def make_shift(
+        self, name, start=time(12, 0), end=time(20, 0), days=common.WEEKDAY_NAMES[:5]
+    ):
         shift = EmployeeShift(employee_shift=name)
         shift.save()
         for day_name in days:
@@ -139,4 +155,7 @@ class AttendanceTestCase(TestCase):
         return group
 
     def api_headers(self, token=API_TOKEN):
-        return {"HTTP_AUTHORIZATION": f"Bearer {token}", "HTTP_X_FORWARDED_PROTO": "https"}
+        return {
+            "HTTP_AUTHORIZATION": f"Bearer {token}",
+            "HTTP_X_FORWARDED_PROTO": "https",
+        }

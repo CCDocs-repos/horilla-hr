@@ -62,7 +62,10 @@ def client_ip(request) -> str:
     """CF-Connecting-IP, else the last X-Forwarded-For hop, else REMOTE_ADDR."""
     ip = (request.META.get("HTTP_CF_CONNECTING_IP") or "").strip()
     if not ip:
-        hops = [h.strip() for h in (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")]
+        hops = [
+            h.strip()
+            for h in (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")
+        ]
         hops = [h for h in hops if h]
         ip = hops[-1] if hops else ""
     if not ip:
@@ -91,7 +94,9 @@ def _day_key():
 def _choices():
     employees = list(common.floor_employees())
     labels = common.labels_for(employees)
-    return sorted(((e.id, labels[e.id]) for e in employees), key=lambda c: (c[1].lower(), c[0]))
+    return sorted(
+        ((e.id, labels[e.id]) for e in employees), key=lambda c: (c[1].lower(), c[0])
+    )
 
 
 def ping(request):
@@ -123,7 +128,9 @@ def notice_form(request, token):
         if form.is_bot():
             return redirect("ccdocs-attendance-notice-thanks", token=token)
         if (cache.get(_day_key()) or 0) >= DAILY_CEILING:
-            logger.error("attendance notice form hit its daily ceiling of %s", DAILY_CEILING)
+            logger.error(
+                "attendance notice form hit its daily ceiling of %s", DAILY_CEILING
+            )
             return _message(
                 request,
                 429,

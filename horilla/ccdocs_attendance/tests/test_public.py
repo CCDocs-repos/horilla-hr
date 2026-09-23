@@ -20,7 +20,9 @@ FORM = f"/attendance-notice/{LINK_TOKEN}/"
 class PublicFormTests(AttendanceTestCase):
     def setUp(self):
         super().setUp()
-        self.agent = self.make_employee("Maria", "Test", "maria@example.com", position=27)
+        self.agent = self.make_employee(
+            "Maria", "Test", "maria@example.com", position=27
+        )
         self.today = common.today_et()
 
     def post(self, client=None, ip="198.51.100.7", **overrides):
@@ -53,7 +55,9 @@ class PublicFormTests(AttendanceTestCase):
     def test_wrong_token_is_404(self):
         response = self.client.get("/attendance-notice/not-the-token/")
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.post_to("/attendance-notice/not-the-token/").status_code, 404)
+        self.assertEqual(
+            self.post_to("/attendance-notice/not-the-token/").status_code, 404
+        )
         self.assertEqual(AttendanceNotice.objects.count(), 0)
 
     def post_to(self, url):
@@ -70,7 +74,9 @@ class PublicFormTests(AttendanceTestCase):
     def test_form_lists_only_active_floor_positions(self):
         self.make_employee("Lead", "Person", "lead@example.com", position=28)
         self.make_employee("Office", "Person", "office@example.com", position=90)
-        self.make_employee("Gone", "Person", "gone@example.com", position=27, active=False)
+        self.make_employee(
+            "Gone", "Person", "gone@example.com", position=27, active=False
+        )
         response = self.client.get(FORM)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Maria T.")
@@ -80,7 +86,9 @@ class PublicFormTests(AttendanceTestCase):
     def test_form_has_no_duplicate_labels(self):
         self.make_employee("Maria", "Tran", "maria.t@example.com", position=26)
         response = self.client.get(FORM)
-        labels = [label for _, label in response.context["form"].fields["employee"].choices][1:]
+        labels = [
+            label for _, label in response.context["form"].fields["employee"].choices
+        ][1:]
         self.assertEqual(len(labels), len(set(labels)))
         self.assertEqual(len(labels), 2)
 
@@ -98,7 +106,9 @@ class PublicFormTests(AttendanceTestCase):
         self.assertTrue(notice.filed_by_self)
         self.assertEqual(notice.filed_by_name, "")
         self.assertEqual(notice.status, "requested")
-        expected = hashlib.sha256(f"{settings.SECRET_KEY}:198.51.100.7".encode()).hexdigest()
+        expected = hashlib.sha256(
+            f"{settings.SECRET_KEY}:198.51.100.7".encode()
+        ).hexdigest()
         self.assertEqual(notice.ip_hash, expected)
         thanks = self.client.get(FORM + "thanks/")
         self.assertContains(thanks, "We got it")
@@ -112,7 +122,9 @@ class PublicFormTests(AttendanceTestCase):
             expected_arrival="",
         )
         notice = AttendanceNotice.objects.get()
-        self.assertEqual((notice.kind, notice.to_date), ("out", start + timedelta(days=13)))
+        self.assertEqual(
+            (notice.kind, notice.to_date), ("out", start + timedelta(days=13))
+        )
         self.assertIsNone(notice.expected_arrival)
 
     def test_filing_for_someone_else_needs_your_name(self):
@@ -128,10 +140,19 @@ class PublicFormTests(AttendanceTestCase):
     def test_rules_are_enforced(self):
         cases = [
             ({"expected_arrival": ""}, "Tell us what time you will get here."),
-            ({"from_date": (self.today - timedelta(days=1)).isoformat()}, "Pick today or a day after today."),
-            ({"from_date": (self.today + timedelta(days=15)).isoformat()}, "Pick a day in the next 14 days."),
             (
-                {"kind": "out", "to_date": (self.today + timedelta(days=14)).isoformat()},
+                {"from_date": (self.today - timedelta(days=1)).isoformat()},
+                "Pick today or a day after today.",
+            ),
+            (
+                {"from_date": (self.today + timedelta(days=15)).isoformat()},
+                "Pick a day in the next 14 days.",
+            ),
+            (
+                {
+                    "kind": "out",
+                    "to_date": (self.today + timedelta(days=14)).isoformat(),
+                },
                 "One form can cover at most 14 days.",
             ),
             (
@@ -176,7 +197,9 @@ class PublicFormTests(AttendanceTestCase):
 
     def test_per_ip_limit_is_per_cf_connecting_ip(self):
         for _ in range(views_public.PER_IP_PER_HOUR):
-            self.assertEqual(self.post(ip="203.0.113.1", website="bot").status_code, 302)
+            self.assertEqual(
+                self.post(ip="203.0.113.1", website="bot").status_code, 302
+            )
         blocked = self.post(ip="203.0.113.1")
         self.assertEqual(blocked.status_code, 429)
         self.assertEqual(AttendanceNotice.objects.count(), 0)
@@ -185,11 +208,21 @@ class PublicFormTests(AttendanceTestCase):
         self.assertEqual(AttendanceNotice.objects.count(), 1)
 
     def test_ip_falls_back_to_the_last_forwarded_hop_then_remote_addr(self):
-        request = mock.Mock(META={"HTTP_X_FORWARDED_FOR": "10.0.0.1, 192.0.2.44", "REMOTE_ADDR": "127.0.0.1"})
+        request = mock.Mock(
+            META={
+                "HTTP_X_FORWARDED_FOR": "10.0.0.1, 192.0.2.44",
+                "REMOTE_ADDR": "127.0.0.1",
+            }
+        )
         self.assertEqual(views_public.client_ip(request), "192.0.2.44")
         request = mock.Mock(META={"REMOTE_ADDR": "127.0.0.1"})
         self.assertEqual(views_public.client_ip(request), "127.0.0.1")
-        request = mock.Mock(META={"HTTP_CF_CONNECTING_IP": "192.0.2.9", "HTTP_X_FORWARDED_FOR": "192.0.2.44"})
+        request = mock.Mock(
+            META={
+                "HTTP_CF_CONNECTING_IP": "192.0.2.9",
+                "HTTP_X_FORWARDED_FOR": "192.0.2.44",
+            }
+        )
         self.assertEqual(views_public.client_ip(request), "192.0.2.9")
 
     def test_global_daily_ceiling(self):
@@ -201,8 +234,13 @@ class PublicFormTests(AttendanceTestCase):
         self.assertEqual(AttendanceNotice.objects.count(), 2)
 
     def test_a_forged_identity_header_stays_anonymous(self):
-        boss = User.objects.create_superuser("boss", "boss@example.com", "not-used-pw-123")
-        headers = {"HTTP_X_AUTH_REQUEST_EMAIL": boss.email, "HTTP_X_AUTH_REQUEST_USER": "boss"}
+        boss = User.objects.create_superuser(
+            "boss", "boss@example.com", "not-used-pw-123"
+        )
+        headers = {
+            "HTTP_X_AUTH_REQUEST_EMAIL": boss.email,
+            "HTTP_X_AUTH_REQUEST_USER": "boss",
+        }
         page = self.client.get(FORM, **headers)
         self.assertEqual(page.status_code, 200)
         self.assertTrue(page.wsgi_request.user.is_anonymous)

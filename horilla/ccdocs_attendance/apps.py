@@ -16,7 +16,9 @@ class CcdocsAttendanceConfig(AppConfig):
         # needs no edit. Trailing slashes everywhere (APPEND_SLASH would 301 the
         # bare paths, and a keyword monitor must not follow a redirect).
         urlpatterns.append(
-            path("attendance-notice/", include("horilla.ccdocs_attendance.urls_public")),
+            path(
+                "attendance-notice/", include("horilla.ccdocs_attendance.urls_public")
+            ),
         )
         urlpatterns.append(
             path("ccdocs-attendance/", include("horilla.ccdocs_attendance.urls")),

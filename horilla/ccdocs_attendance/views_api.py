@@ -70,7 +70,9 @@ def api_view(method):
             if not auth.lower().startswith("bearer "):
                 return JsonResponse({"error": "unauthorized"}, status=401)
             presented = auth.split(" ", 1)[1].strip()
-            if not hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8")):
+            if not hmac.compare_digest(
+                presented.encode("utf-8"), expected.encode("utf-8")
+            ):
                 return JsonResponse({"error": "unauthorized"}, status=401)
             if request.method != method:
                 return _error(405, "method_not_allowed", f"use {method}")
@@ -278,14 +280,18 @@ def day_view(request):
         try:
             include = [int(part) for part in raw_include.split(",") if part.strip()]
         except ValueError:
-            raise ApiError(400, "bad_request", "include must be employee ids, comma separated")
+            raise ApiError(
+                400, "bad_request", "include must be employee ids, comma separated"
+            )
         _employees_by_id(include)
     try:
         history_days = int(request.GET.get("history_days", 14))
     except ValueError:
         raise ApiError(400, "bad_request", "history_days must be an integer")
     if not 0 <= history_days <= MAX_HISTORY_DAYS:
-        raise ApiError(400, "bad_request", f"history_days must be 0..{MAX_HISTORY_DAYS}")
+        raise ApiError(
+            400, "bad_request", f"history_days must be 0..{MAX_HISTORY_DAYS}"
+        )
 
     open_holders = AgentLink.objects.filter(valid_to__isnull=True).values("employee_id")
     employees = list(
@@ -380,7 +386,9 @@ def day_view(request):
                 "employee_id": result.employee_id,
                 "day": result.day.isoformat(),
                 "status": result.status,
-                "called_in": _called_in(emp_notices, result.day, result.scheduled_start),
+                "called_in": _called_in(
+                    emp_notices, result.day, result.scheduled_start
+                ),
                 "any_notice": any(
                     n.from_date <= result.day <= n.to_date for n in emp_notices
                 ),
@@ -423,7 +431,8 @@ def day_view(request):
             "employees": employees_json,
             "notices": [_notice_json(n) for n in notices],
             "day_results": [
-                _result_json(r) for r in DayResult.objects.filter(day=day).order_by("employee_id")
+                _result_json(r)
+                for r in DayResult.objects.filter(day=day).order_by("employee_id")
             ],
             "history": history,
             "points": points,
@@ -442,7 +451,11 @@ def _parse_result(item, day, index):
     employee_id = _int(item.get("employee_id"), f"{where}.employee_id")
     status = item.get("status")
     if status not in RESULT_STATUSES:
-        raise ApiError(400, "bad_request", f"{where}.status must be one of {sorted(RESULT_STATUSES)}")
+        raise ApiError(
+            400,
+            "bad_request",
+            f"{where}.status must be one of {sorted(RESULT_STATUSES)}",
+        )
     closed = item.get("closed", False)
     if not isinstance(closed, bool):
         raise ApiError(400, "bad_request", f"{where}.closed must be true or false")
@@ -452,11 +465,17 @@ def _parse_result(item, day, index):
         point = _dict(point, p_where)
         rule_key = point.get("rule_key")
         if rule_key not in RULE_KEYS:
-            raise ApiError(400, "bad_request", f"{p_where}.rule_key must be one of {sorted(RULE_KEYS)}")
+            raise ApiError(
+                400,
+                "bad_request",
+                f"{p_where}.rule_key must be one of {sorted(RULE_KEYS)}",
+            )
         idem_key = _str(point.get("idem_key"), f"{p_where}.idem_key", 120)
         expected_key = f"{day.isoformat()}:{employee_id}:{rule_key}"
         if idem_key != expected_key:
-            raise ApiError(400, "bad_request", f"{p_where}.idem_key must be {expected_key!r}")
+            raise ApiError(
+                400, "bad_request", f"{p_where}.idem_key must be {expected_key!r}"
+            )
         points.append(
             {
                 "idem_key": idem_key,
@@ -467,9 +486,13 @@ def _parse_result(item, day, index):
     return {
         "employee_id": employee_id,
         "status": status,
-        "scheduled_start": _clock(item.get("scheduled_start"), f"{where}.scheduled_start"),
+        "scheduled_start": _clock(
+            item.get("scheduled_start"), f"{where}.scheduled_start"
+        ),
         "first_login_at": _aware(item.get("first_login_at"), f"{where}.first_login_at"),
-        "minutes_late": _int(item.get("minutes_late"), f"{where}.minutes_late", allow_none=True),
+        "minutes_late": _int(
+            item.get("minutes_late"), f"{where}.minutes_late", allow_none=True
+        ),
         "notice_id": _int(item.get("notice_id"), f"{where}.notice_id", allow_none=True),
         "closed": closed,
         "detail": _dict(item.get("detail"), f"{where}.detail"),
@@ -489,19 +512,30 @@ def day_results_view(request):
     seen = set()
     for result in results:
         if result["employee_id"] in seen:
-            raise ApiError(400, "bad_request", f"employee {result['employee_id']} is listed twice")
+            raise ApiError(
+                400, "bad_request", f"employee {result['employee_id']} is listed twice"
+            )
         seen.add(result["employee_id"])
     _employees_by_id([r["employee_id"] for r in results])
     notice_ids = {r["notice_id"] for r in results if r["notice_id"] is not None}
     notices = AttendanceNotice.objects.in_bulk(notice_ids)
     if set(notices) != notice_ids:
-        raise ApiError(404, "not_found", f"no notice with id {sorted(notice_ids - set(notices))}")
+        raise ApiError(
+            404, "not_found", f"no notice with id {sorted(notice_ids - set(notices))}"
+        )
     for result in results:
         notice = notices.get(result["notice_id"])
         if notice is not None and notice.employee_id != result["employee_id"]:
-            raise ApiError(400, "bad_request", f"notice {notice.id} belongs to another employee")
+            raise ApiError(
+                400, "bad_request", f"notice {notice.id} belongs to another employee"
+            )
 
-    counts = {"upserted": 0, "points_created": 0, "points_skipped_voided": 0, "skipped_excused": 0}
+    counts = {
+        "upserted": 0,
+        "points_created": 0,
+        "points_skipped_voided": 0,
+        "skipped_excused": 0,
+    }
     conflicts = []
     try:
         with transaction.atomic():
@@ -516,7 +550,9 @@ def day_results_view(request):
                     # never overwrites it and never adds points to it.
                     counts["skipped_excused"] += 1
                     continue
-                day_result = existing or DayResult(employee_id=result["employee_id"], day=day)
+                day_result = existing or DayResult(
+                    employee_id=result["employee_id"], day=day
+                )
                 day_result.status = result["status"]
                 day_result.scheduled_start = result["scheduled_start"]
                 day_result.first_login_at = result["first_login_at"]
@@ -558,7 +594,9 @@ def day_results_view(request):
                         )
     except IntegrityError as exc:
         logger.warning("attendance day-results write raced: %s", exc)
-        raise ApiError(409, "conflict", "a concurrent write touched the same rows; retry")
+        raise ApiError(
+            409, "conflict", "a concurrent write touched the same rows; retry"
+        )
 
     return JsonResponse({**counts, "conflicts": conflicts})
 
@@ -573,7 +611,9 @@ def points_withdraw_view(request):
     body = _body(request)
     keys = _list(body.get("idem_keys"), "idem_keys")
     if not keys or not all(isinstance(k, str) and k.strip() for k in keys):
-        raise ApiError(400, "bad_request", "idem_keys must be a non-empty list of strings")
+        raise ApiError(
+            400, "bad_request", "idem_keys must be a non-empty list of strings"
+        )
     reason = _str(body.get("reason"), "reason", 300)
     _str(body.get("run_id", ""), "run_id", 120, allow_blank=True)
     keys = [k.strip() for k in keys]
@@ -610,12 +650,16 @@ def links_view(request):
     for i, item in enumerate(_list(body.get("open", []), "open")):
         where = f"open[{i}]"
         item = _dict(item, where)
-        dialer_user = _str(item.get("dialer_user"), f"{where}.dialer_user", 40, allow_none=True)
+        dialer_user = _str(
+            item.get("dialer_user"), f"{where}.dialer_user", 40, allow_none=True
+        )
         webwork_email = _str(
             item.get("webwork_email"), f"{where}.webwork_email", 254, allow_none=True
         )
         if not dialer_user and not webwork_email:
-            raise ApiError(400, "bad_request", f"{where} needs a dialer_user or a webwork_email")
+            raise ApiError(
+                400, "bad_request", f"{where} needs a dialer_user or a webwork_email"
+            )
         opens.append(
             {
                 "employee_id": _int(item.get("employee_id"), f"{where}.employee_id"),
@@ -632,7 +676,9 @@ def links_view(request):
             {
                 "link_id": _int(item.get("link_id"), f"{where}.link_id"),
                 "valid_to": _date(item.get("valid_to"), f"{where}.valid_to"),
-                "reason": _str(item.get("reason", ""), f"{where}.reason", 200, allow_blank=True),
+                "reason": _str(
+                    item.get("reason", ""), f"{where}.reason", 200, allow_blank=True
+                ),
             }
         )
     _employees_by_id([o["employee_id"] for o in opens])
@@ -652,7 +698,9 @@ def links_view(request):
                     continue
                 if close["valid_to"] < link.valid_from:
                     raise ApiError(
-                        400, "bad_request", f"link {link.id}: valid_to is before valid_from"
+                        400,
+                        "bad_request",
+                        f"link {link.id}: valid_to is before valid_from",
                     )
                 link.valid_to = close["valid_to"]
                 link.close_reason = close["reason"]
@@ -660,13 +708,18 @@ def links_view(request):
                 closed.append(link.id)
 
             for item in opens:
-                open_links = AgentLink.objects.select_for_update().filter(valid_to__isnull=True)
+                open_links = AgentLink.objects.select_for_update().filter(
+                    valid_to__isnull=True
+                )
                 if item["dialer_user"]:
                     holder = open_links.filter(dialer_user=item["dialer_user"]).first()
                     if holder is not None:
                         if holder.employee_id != item["employee_id"]:
                             conflicts.append(
-                                {"dialer_user": item["dialer_user"], "held_by": holder.employee_id}
+                                {
+                                    "dialer_user": item["dialer_user"],
+                                    "held_by": holder.employee_id,
+                                }
                             )
                         # Same person already holds it open: identical, no-op.
                         continue
@@ -681,7 +734,9 @@ def links_view(request):
                 opened.append(link.id)
     except IntegrityError as exc:
         logger.warning("attendance links write raced: %s", exc)
-        raise ApiError(409, "conflict", "a concurrent write touched the same login; retry")
+        raise ApiError(
+            409, "conflict", "a concurrent write touched the same login; retry"
+        )
 
     return JsonResponse({"opened": opened, "closed": closed, "conflicts": conflicts})
 
@@ -750,7 +805,9 @@ def deliveries_claim_view(request):
     key = _str(body.get("key"), "key", 200)
     kind = body.get("kind")
     if kind not in DELIVERY_KINDS:
-        raise ApiError(400, "bad_request", f"kind must be one of {sorted(DELIVERY_KINDS)}")
+        raise ApiError(
+            400, "bad_request", f"kind must be one of {sorted(DELIVERY_KINDS)}"
+        )
     detail = _dict(body.get("detail"), "detail")
     try:
         with transaction.atomic():
@@ -784,7 +841,9 @@ def deliveries_done_view(request):
             return JsonResponse(_delivery_json(delivery))
         if delivery.status != "attempting":
             raise ApiError(
-                409, "conflict", f"delivery is already {delivery.status}; it cannot become {status}"
+                409,
+                "conflict",
+                f"delivery is already {delivery.status}; it cannot become {status}",
             )
         delivery.status = status
         delivery.detail = {**(delivery.detail or {}), **detail}
@@ -798,7 +857,9 @@ def deliveries_list_view(request):
     status = request.GET.get("status")
     if status:
         if status not in {code for code, _ in Delivery.STATUS_CHOICES}:
-            raise ApiError(400, "bad_request", "status must be attempting, sent or failed")
+            raise ApiError(
+                400, "bad_request", "status must be attempting, sent or failed"
+            )
         deliveries = deliveries.filter(status=status)
     older = request.GET.get("older_than_minutes")
     if older not in (None, ""):
@@ -808,5 +869,9 @@ def deliveries_list_view(request):
             raise ApiError(400, "bad_request", "older_than_minutes must be an integer")
         if minutes < 0:
             raise ApiError(400, "bad_request", "older_than_minutes must be 0 or more")
-        deliveries = deliveries.filter(updated_at__lte=timezone.now() - timedelta(minutes=minutes))
-    return JsonResponse({"deliveries": [_delivery_json(d) for d in deliveries.order_by("created_at")]})
+        deliveries = deliveries.filter(
+            updated_at__lte=timezone.now() - timedelta(minutes=minutes)
+        )
+    return JsonResponse(
+        {"deliveries": [_delivery_json(d) for d in deliveries.order_by("created_at")]}
+    )

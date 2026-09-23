@@ -26,7 +26,10 @@ class NoticeForm(forms.Form):
             ("out", "I will be out (not coming in)"),
         ],
         widget=forms.RadioSelect,
-        error_messages={"required": "Pick late or out.", "invalid_choice": "Pick late or out."},
+        error_messages={
+            "required": "Pick late or out.",
+            "invalid_choice": "Pick late or out.",
+        },
     )
     from_date = forms.DateField(
         label="Which day?",
@@ -91,13 +94,19 @@ class NoticeForm(forms.Form):
             if from_date < self.today:
                 self.add_error("from_date", "Pick today or a day after today.")
             elif from_date > self.today + timedelta(days=MAX_DAYS_AHEAD):
-                self.add_error("from_date", f"Pick a day in the next {MAX_DAYS_AHEAD} days.")
+                self.add_error(
+                    "from_date", f"Pick a day in the next {MAX_DAYS_AHEAD} days."
+                )
             if to_date is None:
                 cleaned["to_date"] = from_date
             elif to_date < from_date:
-                self.add_error("to_date", "The last day cannot be before the first day.")
+                self.add_error(
+                    "to_date", "The last day cannot be before the first day."
+                )
             elif to_date > from_date + timedelta(days=MAX_SPAN_DAYS - 1):
-                self.add_error("to_date", f"One form can cover at most {MAX_SPAN_DAYS} days.")
+                self.add_error(
+                    "to_date", f"One form can cover at most {MAX_SPAN_DAYS} days."
+                )
         if cleaned.get("kind") == "late" and not cleaned.get("expected_arrival"):
             self.add_error("expected_arrival", "Tell us what time you will get here.")
         if cleaned.get("kind") == "out":

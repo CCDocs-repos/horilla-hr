@@ -20,13 +20,20 @@ class ManagePageTests(AttendanceTestCase):
         self.today = common.today_et()
         self.agent = self.make_employee("Ann", "Agent", "ann@example.com", position=27)
         self.point = PointEntry.objects.create(
-            employee=self.agent, day=self.today, rule_key="late", points=Decimal("1"),
+            employee=self.agent,
+            day=self.today,
+            rule_key="late",
+            points=Decimal("1"),
             idem_key=f"{self.today}:{self.agent.id}:late",
         )
         self.fixer = self.make_employee("Fay", "Fixer", "fay@example.test", position=90)
-        self.viewer = self.make_employee("Vic", "Viewer", "vic@example.test", position=90)
+        self.viewer = self.make_employee(
+            "Vic", "Viewer", "vic@example.test", position=90
+        )
         self.boss = self.make_employee("Sue", "Super", "sue@example.test", position=90)
-        self.nobody = self.make_employee("Ned", "Nobody", "ned@example.test", position=90)
+        self.nobody = self.make_employee(
+            "Ned", "Nobody", "ned@example.test", position=90
+        )
         self.add_to_group(self.fixer.employee_user_id, common.FIXERS_GROUP)
         self.add_to_group(self.viewer.employee_user_id, common.VIEWERS_GROUP)
         boss_user = self.boss.employee_user_id
@@ -44,14 +51,17 @@ class ManagePageTests(AttendanceTestCase):
 
     def void(self, client, reason="wrong login"):
         return client.post(
-            f"{MANAGE}points/{self.point.id}/void/", {"reason": reason, "back_employee": ""}
+            f"{MANAGE}points/{self.point.id}/void/",
+            {"reason": reason, "back_employee": ""},
         )
 
     def test_anonymous_is_sent_to_sign_in(self):
         response = Client().get(MANAGE)
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login", response["Location"])
-        response = Client().post(f"{MANAGE}points/{self.point.id}/void/", {"reason": "x"})
+        response = Client().post(
+            f"{MANAGE}points/{self.point.id}/void/", {"reason": "x"}
+        )
         self.assertEqual(response.status_code, 302)
         self.point.refresh_from_db()
         self.assertFalse(self.point.voided)
@@ -70,14 +80,24 @@ class ManagePageTests(AttendanceTestCase):
         self.assertNotContains(page, "Excuse these dates")
         self.assertEqual(self.void(client).status_code, 403)
         notice = AttendanceNotice.objects.create(
-            employee=self.agent, kind="out", from_date=self.today, to_date=self.today,
-            reason="x", filed_at=timezone.now(),
+            employee=self.agent,
+            kind="out",
+            from_date=self.today,
+            to_date=self.today,
+            reason="x",
+            filed_at=timezone.now(),
         )
-        self.assertEqual(client.post(f"{MANAGE}notices/{notice.id}/excuse/").status_code, 403)
+        self.assertEqual(
+            client.post(f"{MANAGE}notices/{notice.id}/excuse/").status_code, 403
+        )
         self.assertEqual(
             client.post(
                 f"{MANAGE}excuse-dates/",
-                {"employee_id": self.agent.id, "from_date": self.today.isoformat(), "reason": "x"},
+                {
+                    "employee_id": self.agent.id,
+                    "from_date": self.today.isoformat(),
+                    "reason": "x",
+                },
             ).status_code,
             403,
         )
@@ -98,7 +118,9 @@ class ManagePageTests(AttendanceTestCase):
         client = self.login(self.fixer)
         page = client.get(MANAGE)
         self.assertContains(page, f"points/{self.point.id}/void/")
-        self.assertEqual(client.get(f"{MANAGE}points/{self.point.id}/void/").status_code, 405)
+        self.assertEqual(
+            client.get(f"{MANAGE}points/{self.point.id}/void/").status_code, 405
+        )
         self.void(client, reason="  ")
         self.point.refresh_from_db()
         self.assertFalse(self.point.voided)
@@ -121,8 +143,12 @@ class ManagePageTests(AttendanceTestCase):
 
     def test_mark_notice_excused_voids_its_points_and_days(self):
         notice = AttendanceNotice.objects.create(
-            employee=self.agent, kind="out", from_date=self.today, to_date=self.today,
-            reason="doctor", filed_at=timezone.now(),
+            employee=self.agent,
+            kind="out",
+            from_date=self.today,
+            to_date=self.today,
+            reason="doctor",
+            filed_at=timezone.now(),
         )
         DayResult.objects.create(employee=self.agent, day=self.today, status="late")
         client = self.login(self.fixer)
@@ -130,21 +156,31 @@ class ManagePageTests(AttendanceTestCase):
         notice.refresh_from_db()
         self.point.refresh_from_db()
         day = DayResult.objects.get()
-        self.assertEqual((notice.status, notice.status_changed_by), ("excused", "fay@example.test"))
+        self.assertEqual(
+            (notice.status, notice.status_changed_by), ("excused", "fay@example.test")
+        )
         self.assertTrue(self.point.voided)
         self.assertEqual((day.status, day.excused_by), ("excused", "fay@example.test"))
 
     def test_excuse_dates_covers_past_and_future_days_and_the_engine_keeps_it(self):
         yesterday = self.today - timedelta(days=1)
         old = PointEntry.objects.create(
-            employee=self.agent, day=yesterday, rule_key="out_no_notice", points=Decimal("2"),
+            employee=self.agent,
+            day=yesterday,
+            rule_key="out_no_notice",
+            points=Decimal("2"),
             idem_key=f"{yesterday}:{self.agent.id}:out_no_notice",
         )
         outside = PointEntry.objects.create(
-            employee=self.agent, day=self.today - timedelta(days=9), rule_key="late", points=Decimal("1"),
+            employee=self.agent,
+            day=self.today - timedelta(days=9),
+            rule_key="late",
+            points=Decimal("1"),
             idem_key=f"{self.today - timedelta(days=9)}:{self.agent.id}:late",
         )
-        DayResult.objects.create(employee=self.agent, day=yesterday, status="out", closed=True)
+        DayResult.objects.create(
+            employee=self.agent, day=yesterday, status="out", closed=True
+        )
         client = self.login(self.fixer)
         response = client.post(
             f"{MANAGE}excuse-dates/",
@@ -164,7 +200,10 @@ class ManagePageTests(AttendanceTestCase):
         self.assertFalse(outside.voided)
         self.assertEqual(DayResult.objects.get(day=yesterday).status, "excused")
         excuse = AttendanceNotice.objects.get(status="excused")
-        self.assertEqual((excuse.from_date, excuse.to_date), (yesterday, self.today + timedelta(days=3)))
+        self.assertEqual(
+            (excuse.from_date, excuse.to_date),
+            (yesterday, self.today + timedelta(days=3)),
+        )
 
         # The engine re-posting that day changes nothing.
         from horilla.ccdocs_attendance.tests.base import API_TOKEN
@@ -173,16 +212,27 @@ class ManagePageTests(AttendanceTestCase):
             "date": yesterday.isoformat(),
             "results": [
                 {
-                    "employee_id": self.agent.id, "status": "out", "scheduled_start": "12:00",
-                    "first_login_at": None, "minutes_late": None, "notice_id": None, "closed": True,
+                    "employee_id": self.agent.id,
+                    "status": "out",
+                    "scheduled_start": "12:00",
+                    "first_login_at": None,
+                    "minutes_late": None,
+                    "notice_id": None,
+                    "closed": True,
                     "points": [
-                        {"idem_key": f"{yesterday}:{self.agent.id}:out_no_notice", "rule_key": "out_no_notice", "points": 2}
+                        {
+                            "idem_key": f"{yesterday}:{self.agent.id}:out_no_notice",
+                            "rule_key": "out_no_notice",
+                            "points": 2,
+                        }
                     ],
                 }
             ],
         }
         api = Client().post(
-            "/ccdocs-attendance/api/v1/day-results/", json.dumps(body), content_type="application/json",
+            "/ccdocs-attendance/api/v1/day-results/",
+            json.dumps(body),
+            content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {API_TOKEN}",
         )
         self.assertEqual(api.json()["skipped_excused"], 1)
@@ -193,12 +243,18 @@ class ManagePageTests(AttendanceTestCase):
     def test_excuse_dates_input_is_checked(self):
         client = self.login(self.fixer)
         for data in (
-            {"employee_id": self.agent.id, "from_date": self.today.isoformat(), "reason": ""},
+            {
+                "employee_id": self.agent.id,
+                "from_date": self.today.isoformat(),
+                "reason": "",
+            },
             {"employee_id": self.agent.id, "from_date": "nope", "reason": "x"},
             {"employee_id": 999999, "from_date": self.today.isoformat(), "reason": "x"},
             {
-                "employee_id": self.agent.id, "from_date": self.today.isoformat(),
-                "to_date": (self.today + timedelta(days=62)).isoformat(), "reason": "x",
+                "employee_id": self.agent.id,
+                "from_date": self.today.isoformat(),
+                "to_date": (self.today + timedelta(days=62)).isoformat(),
+                "reason": "x",
             },
         ):
             with self.subTest(data=data):
