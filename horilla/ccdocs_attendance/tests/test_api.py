@@ -357,9 +357,11 @@ class DayResultsWriteTests(ApiTestCase):
             "notice_id": None,
             "closed": False,
             "detail": {"source": "dialer", "login": "9001"},
-            "points": [{"idem_key": self.key, "rule_key": "late", "points": points}]
-            if points is not None
-            else [],
+            "points": (
+                [{"idem_key": self.key, "rule_key": "late", "points": points}]
+                if points is not None
+                else []
+            ),
         }
         result.update(extra)
         return {

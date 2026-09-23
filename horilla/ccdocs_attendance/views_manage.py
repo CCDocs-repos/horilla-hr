@@ -22,11 +22,7 @@ from django.utils import timezone
 
 from employee.models import Employee
 from horilla.ccdocs_attendance import common
-from horilla.ccdocs_attendance.models import (
-    AttendanceNotice,
-    DayResult,
-    PointEntry,
-)
+from horilla.ccdocs_attendance.models import AttendanceNotice, DayResult, PointEntry
 from horilla.decorators import login_required
 
 MAX_EXCUSE_SPAN_DAYS = 62
@@ -142,9 +138,9 @@ def manage(request):
                 "label": labels[person.id],
                 "name": person.get_full_name(),
                 "active": person.is_active,
-                "position": getattr(work_info, "job_position_id", None)
-                if work_info
-                else None,
+                "position": (
+                    getattr(work_info, "job_position_id", None) if work_info else None
+                ),
                 "shift": shift.employee_shift if shift else "",
                 "total": total,
                 "level": _level(total),
