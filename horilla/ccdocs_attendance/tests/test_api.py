@@ -753,3 +753,26 @@ class DeliveriesTests(ApiTestCase):
         bad = self.get("deliveries/", kind="fax")
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(bad.json()["error"], "bad_request")
+
+    def test_the_switch_read_mark_keeps_its_detail(self):
+        # The engine's once-a-day mark of how far its switch memory is complete:
+        # read_to (epoch seconds) and known_from (a Slack ts, or null) must come
+        # back exactly as written, beside the switch messages of the same kind.
+        marks = {
+            "switch-read:2026-10-01": {"read_to": 1790000000, "known_from": None},
+            "switch-read:2026-10-02": {
+                "read_to": 1790086400,
+                "known_from": "1790080000.000200",
+            },
+        }
+        for key, detail in marks.items():
+            claim = {"key": key, "kind": "pause_switch", "detail": detail}
+            self.assertEqual(
+                self.post_json("deliveries/claim/", claim).status_code, 201
+            )
+            done = {"key": key, "status": "sent", "detail": detail}
+            self.assertEqual(self.post_json("deliveries/done/", done).status_code, 200)
+        listed = self.get("deliveries/", kind="pause_switch", status="sent")
+        self.assertEqual(
+            {d["key"]: d["detail"] for d in listed.json()["deliveries"]}, marks
+        )

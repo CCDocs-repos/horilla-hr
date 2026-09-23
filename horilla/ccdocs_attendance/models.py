@@ -204,8 +204,10 @@ class Delivery(NeverDeleted):
         ("slack_close", "Slack day summary"),
         ("slack_counts", "Slack counts line"),
         ("slack_hold", "Slack hold post"),
-        # Not a send: the engine's own memory of a pause/resume message it read
-        # in Slack (key switch:<slack ts>), kept after Slack pages it away.
+        # Not a send: the engine's own memory of the Slack pause switch. Each
+        # pause/resume message it read (key switch:<slack ts>), kept after Slack
+        # pages it away, and once a day how far back that memory is complete
+        # (key switch-read:<day>, detail {read_to, known_from}).
         ("pause_switch", "Pause switch message"),
     ]
     STATUS_CHOICES = [
