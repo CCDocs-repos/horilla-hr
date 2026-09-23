@@ -138,7 +138,7 @@ class DayResult(models.Model):
 class PointEntry(models.Model):
     """One attendance point (or two). Void only, never delete."""
 
-    SOURCE_CHOICES = [("engine", "Engine"), ("sarthak", "Sarthak")]
+    SOURCE_CHOICES = [("engine", "Engine"), ("manager", "Manager page")]
 
     employee = models.ForeignKey(
         Employee, on_delete=models.PROTECT, related_name="ccdocs_attendance_points"

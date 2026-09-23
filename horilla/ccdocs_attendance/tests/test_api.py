@@ -381,14 +381,14 @@ class DayResultsWriteTests(ApiTestCase):
         self.post_json("day-results/", self.body())
         PointEntry.objects.update(
             voided_at=timezone.now(),
-            voided_by="sarthak@example.com",
+            voided_by="fixer@example.com",
             void_reason="wrong",
         )
         response = self.post_json("day-results/", self.body())
         self.assertEqual(response.json()["points_skipped_voided"], 1)
         entry = PointEntry.objects.get()
         self.assertTrue(entry.voided)
-        self.assertEqual(entry.voided_by, "sarthak@example.com")
+        self.assertEqual(entry.voided_by, "fixer@example.com")
 
     def test_a_changed_value_is_a_conflict_and_nothing_changes(self):
         self.post_json("day-results/", self.body())
