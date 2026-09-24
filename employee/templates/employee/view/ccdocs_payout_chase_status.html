@@ -1,0 +1,37 @@
+{% load i18n %}
+{% comment %}
+CCDocs payout chase -- the strip under the Phone row on the employee profile.
+Loaded by htmx from employee/views.py :: payout_chase_status.
+
+HORILLA HAS NO BOOTSTRAP. Its modals are a CSS class, oh-modal--show, toggled
+on a .oh-modal container. An earlier version of this used data-bs-toggle and
+Bootstrap's .modal, and because neither the CSS nor the JS exists here the
+modal never opened and its markup rendered as loose text at the bottom of the
+page. Use Horilla's own classes, nothing else.
+
+THE OPEN HANDLER IS INLINE ON PURPOSE. Horilla binds
+[data-toggle='oh-modal-toggle'] once, at page load
+(static/build/js/web.frontend.js). This strip is swapped in by htmx AFTER that,
+so a button relying on that binding is dead on arrival. onclick always works.
+{% endcomment %}
+{% if chase %}
+<span class="ccdocs-chase-status" style="color:#4d4d4d;">
+	{% trans "Chasing since" %} {{ chase.opened_at|date:"M j" }} &middot;
+	{{ chase.touch_no }} {% if chase.touch_no == 1 %}{% trans "touch" %}{% else %}{% trans "touches" %}{% endif %}{% if chase.last_outcome %} &middot; {{ chase.last_outcome }}{% endif %}
+</span>
+<form action="{% url 'payout-chase-stop' employee_id %}" method="post"
+	style="display:inline-block; margin-left:8px;"
+	onsubmit="return confirm('{% trans "Stop chasing this person for their payment details?" %}')">
+	{% csrf_token %}
+	<button type="submit" class="oh-btn oh-btn--light oh-btn--small">{% trans "Stop" %}</button>
+</form>
+{% else %}
+<button type="button" class="oh-btn oh-btn--secondary oh-btn--small"
+	hx-get="{% url 'payout-chase-modal' employee_id %}"
+	hx-target="#ccdocsChaseModalBody"
+	hx-swap="innerHTML"
+	onclick="document.getElementById('ccdocsChaseModal').classList.add('oh-modal--show');">
+	<ion-icon name="card-outline" class="me-1"></ion-icon>
+	{% trans "Chase for details" %}
+</button>
+{% endif %}

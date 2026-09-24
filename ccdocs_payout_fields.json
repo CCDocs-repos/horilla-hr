@@ -1,0 +1,218 @@
+{
+  "_comment": [
+    "SYNCED COPY. The source is ai-lab governance/payout-fields.json, which the JS chaser reads too. Edit it there, never here.",
+    "The one list of payment details a person can be chased for. Read by BOTH sides:",
+    "  Python -- horilla-customizations renders the multi-select on the employee page from this.",
+    "  JS     -- bin/lib/payroll-chase builds the chase messages and the filled check from this.",
+    "Two copies would drift, so there is exactly one and neither side hardcodes a field.",
+    "",
+    "Each field carries:",
+    "  id       stable key stored in the chase row. NEVER renamed -- open chases hold it.",
+    "  label    what the person clicking the button sees in the modal.",
+    "  line     the plain-English line an agent reads in the email/text. 14-year-old bar.",
+    "  spoken   unused today: the call clips are two fixed recordings that name no fields.",
+    "  table    which Horilla table holds it: employee | bank.",
+    "  column   the column, or additional_info.<key> for the jsonb blob.",
+    "  rail     bank | wise | any -- which payout path the field belongs to.",
+    "Horilla has no column for place of birth, account type, name on account or the Wise",
+    "fields; onboarding already writes those into employee_employeebankdetails.additional_info,",
+    "so that is where they are read from. Do not invent a column on a table we do not own.",
+    "place_of_birth was REMOVED on 2026-09-20. Nothing in the company writes it: 0 of 161 bank rows carry the key and no form collects it. Leaving it tickable meant a chase that could never close -- the agent fills the form, the key is still absent, and they get chased to the 20-touch cap. If a bank ever needs it, add the form field FIRST, then put it back here."
+  ],
+  "version": 1,
+  "groups": [
+    {
+      "id": "personal",
+      "label": "Personal",
+      "fields": [
+        {
+          "id": "phone",
+          "label": "Phone number",
+          "line": "Your mobile phone number",
+          "table": "employee",
+          "column": "phone",
+          "rail": "any"
+        },
+        {
+          "id": "dob",
+          "label": "Date of birth (with the year)",
+          "line": "Your date of birth, including the year",
+          "table": "employee",
+          "column": "dob",
+          "rail": "any"
+        },
+        {
+          "id": "address",
+          "label": "Home address",
+          "line": "Your home address",
+          "table": "employee",
+          "column": "address",
+          "rail": "any"
+        },
+        {
+          "id": "city",
+          "label": "City",
+          "line": "The city you live in",
+          "table": "employee",
+          "column": "city",
+          "rail": "any"
+        },
+        {
+          "id": "state",
+          "label": "State or region",
+          "line": "Your state or region",
+          "table": "employee",
+          "column": "state",
+          "rail": "any"
+        },
+        {
+          "id": "zip",
+          "label": "Postal code",
+          "line": "Your postal code",
+          "table": "employee",
+          "column": "zip",
+          "rail": "any"
+        },
+        {
+          "id": "country",
+          "label": "Country",
+          "line": "The country you live in",
+          "table": "employee",
+          "column": "country",
+          "rail": "any"
+        }
+      ]
+    },
+    {
+      "id": "bank",
+      "label": "Bank",
+      "fields": [
+        {
+          "id": "bank_name",
+          "label": "Bank name",
+          "line": "The name of your bank",
+          "table": "bank",
+          "column": "bank_name",
+          "rail": "bank"
+        },
+        {
+          "id": "account_number",
+          "label": "Account number",
+          "line": "Your bank account number",
+          "table": "bank",
+          "column": "account_number",
+          "rail": "bank"
+        },
+        {
+          "id": "bank_address",
+          "label": "Bank address",
+          "line": "The address of your bank branch",
+          "table": "bank",
+          "column": "address",
+          "rail": "bank"
+        },
+        {
+          "id": "clabe",
+          "label": "CLABE (Mexico)",
+          "line": "Your CLABE (the 18-digit number in your bank app, not the SWIFT code)",
+          "table": "bank",
+          "column": "any_other_code1",
+          "rail": "bank"
+        },
+        {
+          "id": "routing_number",
+          "label": "Routing number (USA)",
+          "line": "Your 9-digit routing number",
+          "table": "bank",
+          "column": "any_other_code1",
+          "rail": "bank"
+        },
+        {
+          "id": "swift_bic",
+          "label": "SWIFT / BIC",
+          "line": "Your bank's SWIFT or BIC code",
+          "table": "bank",
+          "column": "any_other_code1",
+          "rail": "bank"
+        },
+        {
+          "id": "account_type",
+          "label": "Account type (checking or savings)",
+          "line": "Whether your account is checking or savings",
+          "table": "bank",
+          "column": "additional_info.account_type",
+          "rail": "bank"
+        },
+        {
+          "id": "name_on_account",
+          "label": "Name on the bank account",
+          "line": "The full name on your bank account, exactly as your bank has it",
+          "table": "bank",
+          "_column_note": [
+            "The KEY is account_holder_name, not name_on_account. The id stays",
+            "name_on_account because ids are permanent and open chases hold them;",
+            "only the column moved. Measured 2026-09-20 on the live Horilla:",
+            "additional_info ? 'name_on_account' matched 0 of 160 bank rows, while",
+            "? 'account_holder_name' matched 15. apps/onboarding writes",
+            "account_holder_name in three places (api/employee/submit/route.ts:172,",
+            "api/submit/route.ts:174, scripts/resync-horilla.ts:105) and nothing",
+            "anywhere has ever written name_on_account.",
+            "Why it mattered: this field is blank for almost everyone, so it landed",
+            "in nearly every chase the week-before sweep would open. Pointed at a key",
+            "nobody writes, every one of those chases was UNRESOLVABLE -- the agent",
+            "fills the form, the form writes account_holder_name, the check still",
+            "reads empty, and they get called twice a day until the 20-touch cap."
+          ],
+          "column": "additional_info.account_holder_name",
+          "rail": "bank"
+        },
+        {
+          "id": "bank_country",
+          "label": "Bank country",
+          "line": "The country your bank account is in",
+          "table": "bank",
+          "column": "country",
+          "rail": "bank"
+        },
+        {
+          "id": "currency",
+          "label": "Currency to be paid in",
+          "line": "The currency you want to be paid in",
+          "table": "bank",
+          "column": "additional_info.currency",
+          "rail": "bank"
+        }
+      ]
+    },
+    {
+      "id": "wise",
+      "label": "Wise",
+      "fields": [
+        {
+          "id": "wise_email",
+          "label": "Wise email",
+          "line": "The email address on your Wise account",
+          "table": "bank",
+          "column": "additional_info.wise_email",
+          "rail": "wise"
+        },
+        {
+          "id": "wise_account_name",
+          "label": "Name on the Wise account",
+          "line": "The full name on your Wise account",
+          "table": "bank",
+          "column": "additional_info.wise_account_name",
+          "rail": "wise"
+        },
+        {
+          "id": "wise_currency",
+          "label": "Wise currency",
+          "line": "The currency your Wise account receives",
+          "table": "bank",
+          "column": "additional_info.wise_currency",
+          "rail": "wise"
+        }
+      ]
+    }
+  ]
+}

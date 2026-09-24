@@ -312,6 +312,21 @@
 							{% endif %}
 						</span>
 					</li>
+					{% comment %}CCDocs payout chase -- the button, or the status of the chase that is running.
+					Only the "Payroll Chasers" group and superusers see it; employee/views.py checks the same
+					rule again server-side, because a hidden button is not a permission.{% endcomment %}
+					{% if request.user.is_superuser or "Payroll Chasers" in request.user.groups.all|join:"," %}
+					<li class="oh-profile__info-list-item">
+						<span class="oh-profile__info-label">
+							<ion-icon name="card-outline"></ion-icon>
+							<span>{% trans "Payment details" %}:</span>
+						</span>
+						<span class="oh-profile__info-value" id="ccdocsChaseSlot"
+							hx-get="{% url 'payout-chase-status' employee.id %}"
+							hx-trigger="load" hx-swap="innerHTML">
+						</span>
+					</li>
+					{% endif %}
 				</ul>
 			</div>
 		</div>
@@ -633,5 +648,15 @@
 		}
 	})
 </script>
+
+<!-- Chase for details -- the modal SHELL only (CCDocs payout chase).
+     Horilla has no Bootstrap: its modals are .oh-modal plus the oh-modal--show
+     class. The dialog CONTENT is loaded into #ccdocsChaseModalBody by htmx when
+     the button in the status strip is clicked, so it is fresh every time. -->
+{% if request.user.is_superuser or "Payroll Chasers" in request.user.groups.all|join:"," %}
+<div class="oh-modal" id="ccdocsChaseModal" role="dialog" aria-hidden="true">
+	<div class="oh-modal__dialog" style="max-width:640px;" id="ccdocsChaseModalBody"></div>
+</div>
+{% endif %}
 
 {% endblock content %}
