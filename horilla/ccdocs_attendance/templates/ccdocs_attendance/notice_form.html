@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Late or out? Tell us here</title>
+  {% include "ccdocs_attendance/_style.html" %}
+</head>
+<body>
+  <main>
+    <div class="card">
+      <h1>Late or out? Tell us here.</h1>
+      <p>Fill this in at least 1 hour before your shift starts. A coworker can fill it in for you.</p>
+      <p class="hint">Today is {{ today|date:"l, M j" }} (Eastern time).</p>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.errors %}<div class="errors-top">Please fix the lines marked in red.</div>{% endif %}
+        {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label for="{{ form.employee.id_for_label }}">{{ form.employee.label }}</label>
+        {{ form.employee }}
+        {% for error in form.employee.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <span class="label">{{ form.kind.label }}</span>
+        <div class="choices">
+          {% for radio in form.kind %}<label for="{{ radio.id_for_label }}">{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}
+        </div>
+        {% for error in form.kind.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label for="{{ form.from_date.id_for_label }}">{{ form.from_date.label }}</label>
+        {{ form.from_date }}
+        {% for error in form.from_date.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label for="{{ form.to_date.id_for_label }}">{{ form.to_date.label }}</label>
+        {{ form.to_date }}
+        <p class="hint">Leave this empty if it is just one day.</p>
+        {% for error in form.to_date.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label for="{{ form.expected_arrival.id_for_label }}">{{ form.expected_arrival.label }}</label>
+        {{ form.expected_arrival }}
+        {% for error in form.expected_arrival.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label for="{{ form.reason.id_for_label }}">{{ form.reason.label }}</label>
+        {{ form.reason }}
+        <p class="hint">300 characters at most.</p>
+        {% for error in form.reason.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <label class="check" for="{{ form.filing_for_someone_else.id_for_label }}">{{ form.filing_for_someone_else }} {{ form.filing_for_someone_else.label }}</label>
+
+        <label for="{{ form.filed_by_name.id_for_label }}">{{ form.filed_by_name.label }} (only if you are filling this in for someone else)</label>
+        {{ form.filed_by_name }}
+        {% for error in form.filed_by_name.errors %}<p class="error">{{ error }}</p>{% endfor %}
+
+        <div class="hp" aria-hidden="true">
+          <label for="{{ form.website.id_for_label }}">Leave this empty</label>
+          {{ form.website }}
+        </div>
+
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>
