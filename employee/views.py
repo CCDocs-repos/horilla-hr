@@ -3709,3 +3709,383 @@ def employee_tag_update(request, tag_id):
         "base/employee_tag/employee_tag_form.html",
         {"form": form, "tag_id": tag_id},
     )
+"""
+CCDocs patch: payout chase views.
+Appended to /app/employee/views.py on container startup via apply.sh.
+
+Chase an employee for the payment details we are missing: a person on the
+"Payroll Chasers" list ticks what is missing, and the JS chaser in ai-lab
+(bin/lib/payroll-chase) does the emailing, texting, Slack and calling from there.
+
+Names are prefixed _pc_ so this block never clashes with anything else that is
+appended to views.py.
+"""
+from django.views.decorators.http import require_http_methods as _pc_require_http_methods
+from django.contrib.auth.decorators import login_required as _pc_login_required
+from django.contrib import messages as _pc_messages
+from django.core.exceptions import PermissionDenied as _pc_PermissionDenied
+from django.http import HttpResponse as _pc_HttpResponse
+from django.shortcuts import redirect as _pc_redirect, render as _pc_render
+from django.utils.translation import gettext_lazy as _pc_t
+from django.db import connection as _pc_connection, transaction as _pc_db_transaction
+import json as _pc_json
+import logging as _pc_logging
+
+_pc_logger = _pc_logging.getLogger(__name__)
+
+# The one list of details a person can be chased for. Installed by apply.sh as a
+# synced copy of ai-lab governance/payout-fields.json, which is the source. It is
+# read on every request -- never copied into this file or into a template, so the
+# chaser and this page can never disagree about what the fields are.
+PAYOUT_FIELDS_PATH = "/app/ccdocs_payout_fields.json"
+
+# Who may press the button. A Django group, so membership is changed in the admin
+# at /admin/auth/group/ without a code change.
+PAYOUT_CHASE_GROUP = "Payroll Chasers"
+
+# Stand-in for "the catalogue names a column Horilla does not have". Shown to the
+# person as a plain warning rather than silently looking like an empty field.
+_PC_UNREADABLE = object()
+
+
+def _pc_may_chase(user):
+    """Top-level staff only. Same rule as the template gate in individual.html."""
+    return bool(
+        user.is_superuser or user.groups.filter(name=PAYOUT_CHASE_GROUP).exists()
+    )
+
+
+def _pc_profile_url(obj_id):
+    return f"/employee/employee-view/{obj_id}/"
+
+
+def _pc_load_catalogue():
+    """
+    Read the field catalogue. Raises if it is missing or empty -- an unreadable
+    catalogue must stop the page, never quietly offer nothing to tick.
+    """
+    with open(PAYOUT_FIELDS_PATH, "r", encoding="utf-8") as handle:
+        data = _pc_json.load(handle)
+    groups = data.get("groups") or []
+    if not groups:
+        raise ValueError(f"{PAYOUT_FIELDS_PATH} has no groups")
+    return groups
+
+
+def _pc_field_ids(groups):
+    return {field["id"] for group in groups for field in group.get("fields", [])}
+
+
+def _pc_bank_row(employee_id):
+    """The employee's bank details row as a dict, or {} when they have none."""
+    with _pc_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM employee_employeebankdetails WHERE employee_id_id = %s",
+            [employee_id],
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return {}
+        columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+
+def _pc_json_object(value):
+    """
+    A jsonb column as a dict.
+    Django hands jsonb back as the raw text when you read it through a plain
+    cursor (it does its own decoding in the ORM), so a string is the normal case
+    here, not an error. Anything that is not an object comes back unreadable.
+    """
+    if value is None or value == "":
+        return {}
+    if isinstance(value, str):
+        try:
+            value = _pc_json.loads(value)
+        except ValueError:
+            return _PC_UNREADABLE
+    if not isinstance(value, dict):
+        return _PC_UNREADABLE
+    return value
+
+
+def _pc_read_value(field, employee, bank):
+    """
+    What Horilla holds for one catalogue field today.
+    table 'employee' -> a column on employee_employee.
+    table 'bank'     -> a column on employee_employeebankdetails, or a key inside
+                        its additional_info jsonb when written as additional_info.<key>.
+    """
+    table = field.get("table")
+    column = field.get("column") or ""
+    if table == "employee":
+        return getattr(employee, column, _PC_UNREADABLE)
+    if table == "bank":
+        if column.startswith("additional_info."):
+            key = column.split(".", 1)[1]
+            info = _pc_json_object(bank.get("additional_info"))
+            if info is _PC_UNREADABLE:
+                return _PC_UNREADABLE
+            return info.get(key, "")
+        if not bank:
+            return ""
+        if column not in bank:
+            return _PC_UNREADABLE
+        return bank[column]
+    return _PC_UNREADABLE
+
+
+def _pc_catalogue_for_display(employee):
+    """The catalogue plus, for each field, what the employee has on file today."""
+    groups = _pc_load_catalogue()
+    bank = _pc_bank_row(employee.id)
+    display = []
+    for group in groups:
+        fields = []
+        for field in group.get("fields", []):
+            value = _pc_read_value(field, employee, bank)
+            if value is _PC_UNREADABLE:
+                _pc_logger.warning(
+                    "payout chase: catalogue field %s points at %s.%s which Horilla does not have",
+                    field.get("id"),
+                    field.get("table"),
+                    field.get("column"),
+                )
+                current, state = "", "unreadable"
+            else:
+                current = "" if value is None else str(value).strip()
+                state = "filled" if current else "empty"
+            fields.append(
+                {
+                    "id": field["id"],
+                    "label": field["label"],
+                    "current": current,
+                    "state": state,
+                }
+            )
+        display.append({"id": group.get("id"), "label": group.get("label"), "fields": fields})
+    return display
+
+
+def _pc_open_chase(employee_id):
+    """The employee's unresolved chase as a dict, or None."""
+    with _pc_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, opened_at, touch_no, last_touch_at, last_outcome
+              FROM ccdocs_payout_chase
+             WHERE employee_id = %s
+               AND resolved_at IS NULL
+             ORDER BY opened_at DESC
+             LIMIT 1
+            """,
+            [employee_id],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "opened_at": row[1],
+        "touch_no": row[2],
+        "last_touch_at": row[3],
+        "last_outcome": row[4],
+    }
+
+
+@_pc_login_required
+@_pc_require_http_methods(["GET"])
+def payout_chase_status(request, obj_id):
+    """
+    The strip under the Phone row on the employee profile: either the
+    "Chase for details" button, or the live status of the chase that is running.
+    """
+    if not _pc_may_chase(request.user):
+        return _pc_HttpResponse("")
+    return _pc_render(
+        request,
+        "employee/view/ccdocs_payout_chase_status.html",
+        {"employee_id": obj_id, "chase": _pc_open_chase(obj_id)},
+    )
+
+
+@_pc_login_required
+@_pc_require_http_methods(["GET"])
+def payout_chase_modal(request, obj_id):
+    """The body of the chase modal: every field, with what we already hold."""
+    if not _pc_may_chase(request.user):
+        return _pc_HttpResponse("")
+
+    from employee.models import Employee
+
+    try:
+        employee = Employee.objects.get(id=obj_id)
+    except Employee.DoesNotExist:
+        return _pc_HttpResponse("")
+
+    try:
+        groups = _pc_catalogue_for_display(employee)
+    except Exception as e:
+        _pc_logger.error("payout chase: cannot read %s: %s", PAYOUT_FIELDS_PATH, e)
+        return _pc_HttpResponse(
+            '<div class="alert alert-danger">'
+            "The list of payment details could not be read, so there is nothing to tick. "
+            "Tell an engineer before trying again."
+            "</div>"
+        )
+
+    return _pc_render(
+        request,
+        "employee/view/ccdocs_payout_chase_modal_body.html",
+        # The dialog renders its own header and its own form action now, so it
+        # needs the person and their id -- it is swapped in whole on each click
+        # rather than being a body inside a form that lives in the page.
+        {
+            "groups": groups,
+            "employee_id": employee.id,
+            "employee_name": employee.get_full_name(),
+        },
+    )
+
+
+@_pc_login_required
+@_pc_require_http_methods(["POST"])
+def payout_chase_start(request, obj_id):
+    """Open a chase. next_touch_at is NOW -- the JS chaser owns every time after that."""
+    if not _pc_may_chase(request.user):
+        raise _pc_PermissionDenied("Only the Payroll Chasers group can start a chase.")
+
+    from employee.models import Employee
+
+    try:
+        employee = Employee.objects.get(id=obj_id)
+    except Employee.DoesNotExist:
+        _pc_messages.error(request, _pc_t("Employee not found."))
+        return _pc_redirect("/employee/employee-view/")
+
+    try:
+        groups = _pc_load_catalogue()
+    except Exception as e:
+        _pc_logger.error("payout chase: cannot read %s: %s", PAYOUT_FIELDS_PATH, e)
+        _pc_messages.error(
+            request,
+            _pc_t("The list of payment details could not be read. Nothing was started."),
+        )
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    known = _pc_field_ids(groups)
+    picked = {value.strip() for value in request.POST.getlist("fields") if value.strip()}
+    unknown = sorted(picked - known)
+    if unknown:
+        _pc_logger.error(
+            "payout chase: employee %s sent field ids that are not in the catalogue: %s",
+            obj_id,
+            unknown,
+        )
+        _pc_messages.error(
+            request,
+            _pc_t("Nothing was started: these are not things we can chase for: {names}").format(
+                names=", ".join(unknown)
+            ),
+        )
+        return _pc_redirect(_pc_profile_url(obj_id))
+    if not picked:
+        _pc_messages.error(request, _pc_t("Tick at least one thing before you start chasing."))
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    # Store them in catalogue order so the chase row always reads the same way.
+    chosen = [
+        field["id"]
+        for group in groups
+        for field in group.get("fields", [])
+        if field["id"] in picked
+    ]
+
+    try:
+        with _pc_db_transaction.atomic():
+            with _pc_connection.cursor() as cursor:
+                # ON CONFLICT DO NOTHING leans on the partial unique index that
+                # allows only one unresolved chase per employee, so two people
+                # clicking at once cannot open two chases.
+                cursor.execute(
+                    """
+                    INSERT INTO ccdocs_payout_chase
+                        (employee_id, fields, opened_by_id, opened_at, next_touch_at, touch_no)
+                    VALUES (%s, %s::jsonb, %s, NOW(), NOW(), 0)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    [employee.id, _pc_json.dumps(chosen), request.user.id],
+                )
+                started = cursor.rowcount == 1
+    except Exception as e:
+        _pc_logger.error("payout_chase_start failed for employee %s: %s", obj_id, e)
+        _pc_messages.error(
+            request,
+            _pc_t("The chase could not be started. Please try again or contact support."),
+        )
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    if not started:
+        _pc_messages.error(
+            request,
+            _pc_t("{name} is already being chased. Stop that chase before starting a new one.").format(
+                name=employee.get_full_name()
+            ),
+        )
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    _pc_logger.info(
+        "payout chase started: employee=%s by user=%s fields=%s",
+        employee.id,
+        request.user.id,
+        chosen,
+    )
+    _pc_messages.success(
+        request,
+        _pc_t("We are now chasing {name} for {count} thing(s).").format(
+            name=employee.get_full_name(),
+            count=len(chosen),
+        ),
+    )
+    return _pc_redirect(_pc_profile_url(obj_id))
+
+
+@_pc_login_required
+@_pc_require_http_methods(["POST"])
+def payout_chase_stop(request, obj_id):
+    """Close the chase that is running for this employee."""
+    if not _pc_may_chase(request.user):
+        raise _pc_PermissionDenied("Only the Payroll Chasers group can stop a chase.")
+
+    try:
+        with _pc_db_transaction.atomic():
+            with _pc_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE ccdocs_payout_chase
+                       SET resolved_at   = NOW(),
+                           resolved_how  = 'stopped',
+                           stopped_by_id = %s
+                     WHERE employee_id = %s
+                       AND resolved_at IS NULL
+                    """,
+                    [request.user.id, obj_id],
+                )
+                stopped = cursor.rowcount
+    except Exception as e:
+        _pc_logger.error("payout_chase_stop failed for employee %s: %s", obj_id, e)
+        _pc_messages.error(
+            request,
+            _pc_t("The chase could not be stopped. Please try again or contact support."),
+        )
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    if not stopped:
+        _pc_messages.error(request, _pc_t("There was no chase running for this person."))
+        return _pc_redirect(_pc_profile_url(obj_id))
+
+    _pc_logger.info(
+        "payout chase stopped: employee=%s by user=%s", obj_id, request.user.id
+    )
+    _pc_messages.success(request, _pc_t("We have stopped chasing this person."))
+    return _pc_redirect(_pc_profile_url(obj_id))

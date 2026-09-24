@@ -425,4 +425,24 @@ urlpatterns = [
         name="employee-tag-delete",
         kwargs={"model": EmployeeTag, "HttpResponse": True},
     ),
+    path(
+        "payout-chase-status/<int:obj_id>/",
+        views.payout_chase_status,
+        name="payout-chase-status",
+    ),
+    path(
+        "payout-chase-modal/<int:obj_id>/",
+        views.payout_chase_modal,
+        name="payout-chase-modal",
+    ),
+    path(
+        "payout-chase-start/<int:obj_id>/",
+        views.payout_chase_start,
+        name="payout-chase-start",
+    ),
+    path(
+        "payout-chase-stop/<int:obj_id>/",
+        views.payout_chase_stop,
+        name="payout-chase-stop",
+    ),
 ]

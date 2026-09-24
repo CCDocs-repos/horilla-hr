@@ -1,0 +1,104 @@
+{% load i18n %}
+{% comment %}
+CCDocs payout chase -- the WHOLE dialog, loaded into .oh-modal__dialog by htmx
+when the button is clicked (employee/views.py :: payout_chase_modal).
+
+It renders the header and footer too, not just the body, because the dialog is
+swapped in fresh on every click -- that keeps the ticked boxes and the shown
+values from going stale between openings.
+
+NO BOOTSTRAP CLASSES. Horilla ships none of them; they render as unstyled
+text. Only oh-* classes and inline style here.
+
+CLOSE IS INLINE for the same reason the open is: Horilla binds .oh-modal__close
+once at page load, and this markup arrives afterwards.
+{% endcomment %}
+<div class="oh-modal__dialog-header">
+	<h2 class="oh-modal__dialog-title">
+		{% blocktrans with name=employee_name %}Chase {{ name }} for missing details{% endblocktrans %}
+	</h2>
+	<button type="button" class="oh-modal__close" aria-label="Close"
+		onclick="document.getElementById('ccdocsChaseModal').classList.remove('oh-modal--show');">
+		<ion-icon name="close-outline"></ion-icon>
+	</button>
+</div>
+
+<form action="{% url 'payout-chase-start' employee_id %}" method="post" id="ccdocsChaseForm">
+	{% csrf_token %}
+	<div class="oh-modal__dialog-body" style="max-height:60vh; overflow-y:auto;">
+		<p style="margin-bottom:14px; color:#4d4d4d;">
+			{% trans "Tick everything we are missing. They will be emailed, texted, sent a Slack message and called twice a day until it is in." %}
+		</p>
+
+		{% for group in groups %}
+		<div style="margin-bottom:18px;">
+			<div class="oh-label" style="font-weight:600; margin-bottom:6px;">{{ group.label }}</div>
+			{% for field in group.fields %}
+			<label for="ccdocsChaseField_{{ field.id }}"
+				style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 8px; border-radius:6px; cursor:pointer;"
+				onmouseover="this.style.background='#f5f5f5';" onmouseout="this.style.background='';">
+				<span style="display:flex; align-items:center; gap:8px;">
+					<input type="checkbox" name="fields" value="{{ field.id }}"
+						id="ccdocsChaseField_{{ field.id }}" style="width:16px; height:16px;">
+					<span>{{ field.label }}</span>
+				</span>
+				{% if field.state == "filled" %}
+				<span style="color:#6b6b6b; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+					title="{{ field.current }}">{{ field.current }}</span>
+				{% elif field.state == "empty" %}
+				<span style="color:#b00020; font-weight:600;">{% trans "empty" %}</span>
+				{% else %}
+				<span style="color:#b00020;">{% trans "we cannot read this one" %}</span>
+				{% endif %}
+			</label>
+			{% endfor %}
+		</div>
+		{% endfor %}
+
+		{% comment %}Shown when the box named in data-warn-field is ticked.{% endcomment %}
+		<div id="ccdocsChasePhoneWarning" data-warn-field="phone"
+			style="display:none; background:#fff4e5; border:1px solid #ffd8a8; border-radius:6px; padding:10px; margin-top:10px;">
+			{% trans "We have no phone number, so we can only email and send a Slack message -- no calls or texts." %}
+		</div>
+	</div>
+
+	<div class="oh-modal__dialog-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 0 0 0;">
+		<button type="button" class="oh-btn oh-btn--light"
+			onclick="document.getElementById('ccdocsChaseModal').classList.remove('oh-modal--show');">
+			{% trans "Cancel" %}
+		</button>
+		<button type="submit" class="oh-btn oh-btn--secondary" id="ccdocsChaseStart" disabled>
+			{% trans "Start chasing" %}
+		</button>
+	</div>
+</form>
+
+<script>
+(function () {
+	// Scoped to this dialog and re-run on every swap, so it never depends on a
+	// binding made at page load.
+	var form = document.getElementById('ccdocsChaseForm');
+	if (!form) { return; }
+	var start = document.getElementById('ccdocsChaseStart');
+	var warn = document.getElementById('ccdocsChasePhoneWarning');
+
+	form.addEventListener('change', function () {
+		var ticked = form.querySelectorAll('input[name="fields"]:checked');
+		if (start) { start.disabled = ticked.length === 0; }
+		if (warn) {
+			var watched = form.querySelector('input[name="fields"][value="' + warn.getAttribute('data-warn-field') + '"]');
+			warn.style.display = (watched && watched.checked) ? 'block' : 'none';
+		}
+	});
+
+	// Say something happened. Without this the page just sits there after the
+	// click and nobody can tell whether it worked -- which is exactly how the
+	// first version looked broken.
+	form.addEventListener('submit', function () {
+		if (start) {
+			start.disabled = true;
+			start.textContent = '{% trans "Starting..." %}';
+		}
+	});
+})();
+</script>
