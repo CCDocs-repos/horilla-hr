@@ -170,6 +170,7 @@ class ManagePageTests(AttendanceTestCase):
         )
         self.assertTrue(self.point.voided)
         self.assertEqual((day.status, day.excused_by), ("excused", "fay@example.test"))
+        self.assertTrue(day.closed, "an excused day is final, so it must be closed")
 
     def test_excuse_dates_covers_past_and_future_days_and_the_engine_keeps_it(self):
         yesterday = self.today - timedelta(days=1)

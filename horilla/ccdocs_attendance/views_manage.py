@@ -95,6 +95,9 @@ def _excuse_days(employee_id, first, last, user, reason):
         employee_id=employee_id, day__gte=first, day__lte=last
     ).update(
         status="excused",
+        # An excused day is final: the engine never rescores it, so it is closed too (else the
+        # engine's catch-up and the SOP read-back would keep treating it as an unfinished close).
+        closed=True,
         excused_by=common.user_tag(user),
         excused_at=now,
         excuse_reason=reason[:300],
